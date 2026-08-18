@@ -60,6 +60,32 @@ spec:
 
         region: us-east-1
 
+        # SET EXPLICITLY, and it is not optional here.
+        #
+        # Left unset, the controller discovers its VPC from EC2 instance
+        # metadata (IMDS). That fails on EKS, because managed node groups set
+        # the IMDS hop limit to 1 - which stops PODS (one extra network hop)
+        # from reaching metadata at all. The controller crash-loops with:
+        #
+        #   unable to initialize AWS cloud
+        #   failed to get VPC ID: ... ec2imds: GetMetadata,
+        #   context deadline exceeded
+        #
+        # The tempting fix is raising the hop limit to 2. Do not: that lets ANY
+        # pod read the node's IAM credentials, which is exactly the attack IRSA
+        # exists to prevent. Blocking pod access to IMDS is correct hardening;
+        # the controller just needs to be told the answer instead of sniffing
+        # for it.
+        #
+        # Hardcoding the id is safe BECAUSE terraform/aws/10-network is never
+        # destroyed - a VPC, its subnets, its internet gateway and its route
+        # tables are all free, so there is no reason to tear them down between
+        # sessions, and the id stays stable. See terraform/destroy.sh.
+        #
+        # If you ever do recreate the network layer, this value must be updated:
+        #     cd terraform/aws/10-network && terraform output -raw vpc_id
+        vpcId: vpc-0ddb81d25ca5044cd
+
         serviceAccount:
           create: true
           # MUST match terraform/aws/40-access exactly. The IRSA trust policy

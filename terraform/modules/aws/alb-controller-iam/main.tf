@@ -43,5 +43,9 @@ module "irsa" {
   namespace       = var.namespace
   service_account = var.service_account
 
-  policy_arns = [aws_iam_policy.this.arn]
+  # Static key, computed value. The key is just a label for the resource
+  # address; it exists so Terraform can plan without knowing the ARN yet.
+  policy_arns = {
+    alb-controller = aws_iam_policy.this.arn
+  }
 }

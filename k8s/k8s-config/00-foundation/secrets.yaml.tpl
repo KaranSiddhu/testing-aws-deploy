@@ -48,10 +48,31 @@ stringData:
   POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"
   POSTGRES_DB: "${POSTGRES_DB}"
 
-  # Built here rather than being typed into env.sh, so the parts above are the
-  # single source of truth and cannot drift from the URL.
+  # Assembled by apply.sh, NOT hardcoded here. That matters, because the two
+  # platforms need completely different values:
   #
-  # POSTGRES_PASSWORD_ENCODED is the URL-encoded password, derived by apply.sh.
-  # A raw @ or # in a password silently truncates a URL, and the resulting error
-  # ("could not translate host name") points at DNS instead of the password.
-  DATABASE_URL: "postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD_ENCODED}@postgres:5432/${POSTGRES_DB}"
+  #   kind  postgresql+asyncpg://<user>:<pw>@postgres:5432/<db>
+  #         "postgres" is a Service in this namespace.
+  #
+  #   eks   postgresql+asyncpg://<user>:<pw>@<rds-endpoint>:5432/<db>?sslmode=require
+  #         taken from DATABASE_URL_OVERRIDE in env.sh, which comes from
+  #         `terraform output -raw database_url`. RDS enforces TLS, so
+  #         sslmode=require is not optional.
+  #
+  # This line previously hardcoded "@postgres:5432" and ignored the override
+  # entirely. apply.sh reported "DATABASE_URL: from DATABASE_URL_OVERRIDE" while
+  # rendering the kind value anyway - the script was right and the template was
+  # not. On EKS the pod then failed with:
+  #
+  #     socket.gaierror: [Errno -2] Name or service not known
+  #
+  # which reads as broken cluster DNS rather than a wrong hostname.
+  #
+  # The lesson is worth more than the fix: a log line saying it did the right
+  # thing is not evidence that it did. Check the artefact, not the narration -
+  # `kubectl get secret db-credentials -o jsonpath='{.data.DATABASE_URL}' |
+  # base64 -d` would have shown it immediately.
+  #
+  # The password inside is already URL-encoded, either by apply.sh or by
+  # Terraform's urlencode() in the 30-data output.
+  DATABASE_URL: "${DATABASE_URL}"

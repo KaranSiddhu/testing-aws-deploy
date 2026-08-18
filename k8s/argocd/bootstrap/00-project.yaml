@@ -26,8 +26,26 @@ spec:
   # repository timeout with nothing in the ArgoCD logs about a firewall.
   #
   # It costs nothing to build the habit here.
+  # EVERY source an Application may pull from must be listed here. An
+  # Application naming an unlisted repo sits at InvalidSpecError with:
+  #
+  #   application repo <url> is not permitted in project '<project>'
+  #
+  # and never syncs. Nothing else fails - which is the boundary doing its job,
+  # but it looks like a broken Application until you read the condition.
   sourceRepos:
     - https://github.com/KaranSiddhu/testing-aws-magure-deploy.git
+
+    # AWS's Helm repository, for the AWS Load Balancer Controller on EKS.
+    #
+    # A SECOND ENTRY IS A DELIBERATE DECISION, not a formality. Each one widens
+    # what a compromised or mistyped Application could deploy. AWNIC has exactly
+    # one entry, because it vendors every upstream chart into k8s/charts/ - not
+    # for purity, but because its ArgoCD has no route to any chart host at all.
+    #
+    # We have internet, so pointing at the source is simpler and there is
+    # nothing to keep in sync. The cost is this line.
+    - https://aws.github.io/eks-charts
 
   destinations:
     # argocd, for the root Application's children. The child Application objects

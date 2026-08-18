@@ -215,7 +215,23 @@ phase_07() {
       ;;
     eks)
       log "07-routes: ALB routes"
-      echo "  waiting for the AWS Load Balancer Controller..."
+      echo "  waiting for ArgoCD to create the AWS Load Balancer Controller..."
+
+      # TWO waits, and the first one is not redundant.
+      #
+      # `kubectl wait --for=condition=available` fails IMMEDIATELY with
+      # "NotFound" if the object does not exist yet - it does not wait for
+      # something to appear. And at this point in the bootstrap it will not
+      # exist: the root Application was applied seconds ago and ArgoCD has not
+      # finished creating its children.
+      #
+      # --for=create waits for the object to come into existence. Only then
+      # does waiting for it to become available make sense.
+      kubectl wait --namespace kube-system \
+        --for=create --timeout=300s \
+        deployment/aws-load-balancer-controller
+
+      echo "  waiting for it to become available..."
       # Its admission webhook rejects Ingress objects until it is running, and
       # the error is a webhook connection failure that says nothing about the
       # controller still starting.

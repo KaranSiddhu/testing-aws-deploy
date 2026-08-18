@@ -14,16 +14,28 @@
 # apply half-completes, and you are left with orphaned resources that still
 # bill and that Terraform no longer tracks cleanly.
 #
-# TWO LAYERS ARE DELIBERATELY LEFT ALONE:
+# THE RULE: destroy what costs money, keep what does not.
+#
+# THREE LAYERS ARE DELIBERATELY LEFT ALONE:
 #
 #   00-prereq  the state bucket. Holds the state of everything else and costs a
 #              fraction of a cent per month. Destroying it would mean Terraform
 #              forgetting what it built while the resources carried on existing
 #              and billing.
 #
+#   10-network the VPC. A VPC, its subnets, its internet gateway and its route
+#              tables are ALL FREE - only NAT gateways, VPC interface endpoints
+#              and idle Elastic IPs bill, and we deliberately create none of
+#              those. Destroying it would save nothing and would change the VPC
+#              id, which the AWS Load Balancer Controller has hardcoded (it
+#              cannot discover it, because pods are blocked from EC2 instance
+#              metadata by design). Keeping it makes the id stable.
+#
 #   50-edge    the ACM certificate. Free, and validating it means adding CNAME
 #              records by hand at Hostinger. Destroying it would mean redoing
 #              that DNS work and waiting for revalidation every single session.
+#
+# What remains is the whole bill: the EKS control plane, the nodes, and RDS.
 # -----------------------------------------------------------------------------
 set -euo pipefail
 
@@ -31,7 +43,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 
 # Reverse of apply order. 40-access first: its IAM roles trust the cluster's
 # OIDC provider, so they must go before the cluster does.
-LAYERS=(40-access 30-data 20-cluster 10-network)
+LAYERS=(40-access 30-data 20-cluster)
 
 if [ "${1:-}" != "--yes" ]; then
   echo ""
@@ -41,7 +53,8 @@ if [ "${1:-}" != "--yes" ]; then
   echo "  The RDS database goes with it. skip_final_snapshot is true, so"
   echo "  THERE IS NO BACKUP. Any data in it is gone."
   echo ""
-  echo "  Left alone: 00-prereq (state bucket), 50-edge (ACM certificate)."
+  echo "  Left alone, because they are free: 00-prereq (state bucket),"
+  echo "  10-network (VPC), 50-edge (ACM certificate)."
   echo ""
   read -r -p "  Type 'destroy' to continue: " answer
   [ "$answer" = "destroy" ] || { echo "  aborted"; exit 1; }
