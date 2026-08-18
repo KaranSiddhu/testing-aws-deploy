@@ -1,0 +1,33 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: vault
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: '1'
+  finalizers:
+  - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: git@github.com:KaranSiddhu/testing-aws-magure-deploy.git
+    targetRevision: main
+    path: k8s/charts/vault
+    helm:
+      valuesObject:
+        vaultTokenSmName: magoneai-vault-token
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: magoneai
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+    - ServerSideApply=true
+    retry:
+      limit: 8
+      backoff:
+        duration: 15s
+        factor: 2
+        maxDuration: 5m

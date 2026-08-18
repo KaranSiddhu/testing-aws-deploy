@@ -1,0 +1,5 @@
+# Single Deployment exposing cluster object state on :8080 (metrics) and :8081
+# (telemetry). Read-only ClusterRole. Scraped via the scrape annotation on its Service.
+image:
+  repository: registry.k8s.io/kube-state-metrics/kube-state-metrics
+  tag: "v2.13.0"

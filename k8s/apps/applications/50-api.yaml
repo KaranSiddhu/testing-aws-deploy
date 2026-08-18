@@ -1,0 +1,42 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: api
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: '5'
+  finalizers:
+  - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: git@github.com:KaranSiddhu/testing-aws-magure-deploy.git
+    targetRevision: main
+    path: k8s/charts/api
+    helm:
+      valuesObject:
+        image:
+          tag: sha-6a30def
+        replicaCount: 1
+        appEnv: production
+        appUrl: https://app.lab.karansiddhu.com
+        email:
+          provider: resend
+          from: no-reply@magure.ai
+          fromName: MagOneAI
+          welcomeCc: ''
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: magoneai
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+    - ServerSideApply=true
+    retry:
+      limit: 8
+      backoff:
+        duration: 15s
+        factor: 2
+        maxDuration: 5m

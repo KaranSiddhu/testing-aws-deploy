@@ -1,0 +1,6 @@
+apiVersion: v2
+name: qdrant
+description: MagOneAI Qdrant vector database (single-replica StatefulSet with headless + ClusterIP services).
+type: application
+version: 0.1.0
+appVersion: "1.14.0"

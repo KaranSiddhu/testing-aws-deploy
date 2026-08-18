@@ -1,0 +1,26 @@
+# vault.hcl template with __PLACEHOLDERS__ rendered by an initContainer from env.
+# The seal block is empty: key id + region come from env
+# (VAULT_AWSKMS_SEAL_KEY_ID / AWS_REGION).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vault-config-tpl
+  labels:
+    app.kubernetes.io/part-of: magoneai
+data:
+  vault.hcl: |
+    ui = true
+    disable_mlock = true
+
+    listener "tcp" {
+      address     = "0.0.0.0:8200"
+      tls_disable = 1
+    }
+
+    storage "postgresql" {
+      connection_url = "postgres://__DB_USER__:__DB_PASSWORD__@__DB_HOST__:5432/vault?sslmode=require"
+      table          = "vault_kv_store"
+      ha_enabled     = false
+    }
+
+    seal "awskms" {}

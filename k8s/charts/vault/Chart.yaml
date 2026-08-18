@@ -1,0 +1,4 @@
+apiVersion: v2
+name: vault
+description: Vault with AWS KMS auto-unseal + RDS storage, config injected via env (GitOps).
+version: 0.1.0

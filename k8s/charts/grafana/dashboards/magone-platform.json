@@ -1,0 +1,219 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "liveNow": true,
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 100,
+      "panels": [],
+      "title": "LLM Usage",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "unit": "short", "color": { "mode": "thresholds" }, "thresholds": { "steps": [{ "color": "green" }] } }
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 1 },
+      "id": 1,
+      "options": { "colorMode": "value", "graphMode": "area", "textMode": "auto", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [{ "expr": "sum(magure_llm_requests_total) or vector(0)", "refId": "A" }],
+      "title": "Total LLM Requests",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "unit": "short", "color": { "mode": "thresholds" }, "thresholds": { "steps": [{ "color": "blue" }] } }
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 1 },
+      "id": 2,
+      "options": { "colorMode": "value", "graphMode": "area", "textMode": "auto", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [{ "expr": "sum(magure_llm_tokens_total) or vector(0)", "refId": "A" }],
+      "title": "Total Tokens Used",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "unit": "currencyUSD", "decimals": 2, "color": { "mode": "thresholds" }, "thresholds": { "steps": [{ "color": "orange" }] } }
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 1 },
+      "id": 3,
+      "options": { "colorMode": "value", "graphMode": "area", "textMode": "auto", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [{ "expr": "(sum(magure_llm_cost_cents_total) or vector(0)) / 100", "refId": "A" }],
+      "title": "Total LLM Cost",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "unit": "s", "color": { "mode": "palette-classic" }, "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 10 } }
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 1 },
+      "id": 4,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [
+        { "expr": "histogram_quantile(0.95, sum(rate(magure_llm_request_duration_seconds_bucket[5m])) by (le)) or vector(0)", "legendFormat": "P95", "refId": "A" },
+        { "expr": "histogram_quantile(0.50, sum(rate(magure_llm_request_duration_seconds_bucket[5m])) by (le)) or vector(0)", "legendFormat": "P50", "refId": "B" }
+      ],
+      "title": "LLM Latency",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "unit": "short", "color": { "mode": "palette-classic" }, "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 20 } }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 5 },
+      "id": 5,
+      "options": { "legend": { "displayMode": "table", "calcs": ["sum", "last"], "placement": "bottom" } },
+      "targets": [
+        { "expr": "sum(rate(magure_llm_requests_total[5m])) by (model) * 60 or vector(0)", "legendFormat": "{{model}}", "refId": "A" }
+      ],
+      "title": "LLM Requests/min by Model",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "unit": "short", "color": { "mode": "palette-classic" }, "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 20 } }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 5 },
+      "id": 6,
+      "options": { "legend": { "displayMode": "table", "calcs": ["sum", "last"], "placement": "bottom" } },
+      "targets": [
+        { "expr": "sum(rate(magure_llm_tokens_total[5m])) by (type) * 60 or vector(0)", "legendFormat": "{{type}}", "refId": "A" }
+      ],
+      "title": "Token Rate/min by Type",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 13 },
+      "id": 101,
+      "panels": [],
+      "title": "Database Performance",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "unit": "s", "color": { "mode": "palette-classic" }, "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 10 } }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 14 },
+      "id": 7,
+      "options": { "legend": { "displayMode": "table", "calcs": ["mean", "max"], "placement": "bottom" } },
+      "targets": [
+        { "expr": "histogram_quantile(0.95, sum(rate(magure_db_query_duration_seconds_bucket[5m])) by (le, table)) or vector(0)", "legendFormat": "P95 {{table}}", "refId": "A" }
+      ],
+      "title": "DB Query P95 Latency by Table",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "unit": "short", "color": { "mode": "palette-classic" }, "custom": { "drawStyle": "bars", "fillOpacity": 80, "stacking": { "mode": "normal" } } }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 14 },
+      "id": 8,
+      "options": { "legend": { "displayMode": "table", "calcs": ["sum"], "placement": "bottom" } },
+      "targets": [
+        { "expr": "topk(10, sum(rate(magure_db_query_duration_seconds_count[5m])) by (table, operation)) * 60 or vector(0)", "legendFormat": "{{operation}} {{table}}", "refId": "A" }
+      ],
+      "title": "Top DB Queries/min",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 22 },
+      "id": 102,
+      "panels": [],
+      "title": "MCP Tools",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "unit": "short", "color": { "mode": "palette-classic" }, "custom": { "drawStyle": "bars", "fillOpacity": 80 } }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 23 },
+      "id": 9,
+      "options": { "legend": { "displayMode": "table", "calcs": ["sum", "last"], "placement": "bottom" } },
+      "targets": [
+        { "expr": "topk(10, sum(rate(magure_mcp_tool_calls_total[5m])) by (tool_name)) * 60 or vector(0)", "legendFormat": "{{tool_name}}", "refId": "A" }
+      ],
+      "title": "MCP Tool Calls/min",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "unit": "s", "color": { "mode": "palette-classic" }, "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 10 } }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 23 },
+      "id": 10,
+      "options": { "legend": { "displayMode": "table", "calcs": ["mean", "max"], "placement": "bottom" } },
+      "targets": [
+        { "expr": "histogram_quantile(0.95, sum(rate(magure_mcp_tool_duration_seconds_bucket[5m])) by (le, tool_name)) or vector(0)", "legendFormat": "P95 {{tool_name}}", "refId": "A" }
+      ],
+      "title": "MCP Tool P95 Latency",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 31 },
+      "id": 103,
+      "panels": [],
+      "title": "Process Resources",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "unit": "s", "color": { "mode": "palette-classic" }, "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 10 } }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 32 },
+      "id": 11,
+      "options": { "legend": { "displayMode": "table", "calcs": ["mean", "last"], "placement": "bottom" } },
+      "targets": [
+        { "expr": "rate(process_cpu_seconds_total{job=\"magone-api\"}[5m])", "legendFormat": "API", "refId": "A" },
+        { "expr": "rate(process_cpu_seconds_total{job=\"magone-worker\"}[5m])", "legendFormat": "Worker", "refId": "B" },
+        { "expr": "rate(process_cpu_seconds_total{job=\"magone-kb-worker\"}[5m])", "legendFormat": "KB Worker", "refId": "C" }
+      ],
+      "title": "CPU Usage (cores)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "unit": "decbytes", "color": { "mode": "palette-classic" }, "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 10 } }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 32 },
+      "id": 12,
+      "options": { "legend": { "displayMode": "table", "calcs": ["mean", "last"], "placement": "bottom" } },
+      "targets": [
+        { "expr": "process_resident_memory_bytes{job=\"magone-api\"}", "legendFormat": "API RSS", "refId": "A" },
+        { "expr": "process_resident_memory_bytes{job=\"magone-worker\"}", "legendFormat": "Worker RSS", "refId": "B" },
+        { "expr": "process_resident_memory_bytes{job=\"magone-kb-worker\"}", "legendFormat": "KB Worker RSS", "refId": "C" }
+      ],
+      "title": "Memory Usage (RSS)",
+      "type": "timeseries"
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 38,
+  "tags": ["magone", "platform", "llm", "mcp"],
+  "templating": { "list": [] },
+  "time": { "from": "now-3h", "to": "now" },
+  "timepicker": { "refresh_intervals": ["10s", "30s", "1m", "5m"] },
+  "timezone": "",
+  "title": "MagOneAI - Platform Metrics",
+  "uid": "magone-platform",
+  "version": 1
+}

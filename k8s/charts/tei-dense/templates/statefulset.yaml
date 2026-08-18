@@ -1,0 +1,91 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: tei-dense
+  labels:
+    {{- include "tei-dense.labels" . | nindent 4 }}
+spec:
+  serviceName: tei-dense-headless
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "tei-dense.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "tei-dense.labels" . | nindent 8 }}
+    spec:
+      # k8s auto-injects legacy service env vars like PROMETHEUS_PORT=tcp://...
+      # TEI reads PROMETHEUS_PORT via clap for its --prometheus-port flag and
+      # crashes when the value isn't an integer. Disabling these here matches
+      # the convention used by the api/kb-worker/workflow-engine charts.
+      enableServiceLinks: false
+      containers:
+        - name: tei-dense
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          args:
+            - "--model-id"
+            - "Nexaaman/bge-m3-int8-tei"
+            - "--pooling"
+            - "cls"
+            - "--max-client-batch-size"
+            - "32"
+            # TEI pre-allocates activation buffers sized for max-batch-tokens
+            # at warmup. 8192 needs ~5-8 GB peak; with our 6Gi limit the pod
+            # OOM-killed during warmup. Dropped to 2048 (~3 GB peak) which
+            # comfortably fits in 6Gi. Throughput cost is minimal because
+            # the ONNX backend caps internal batches at 8 anyway ("Backend
+            # does not support a batch size > 8" warning).
+            - "--max-batch-tokens"
+            - "2048"
+          ports:
+            - name: http
+              containerPort: 80
+          resources:
+            requests:
+              cpu: 500m
+              memory: 4Gi
+            limits:
+              cpu: 2000m
+              # TEI's actual memory footprint for BGE-M3 (568M params, XLM-RoBERTa-large)
+              # exceeds the per-token estimates in services/embedding/README.md.
+              # ONNX runtime arena + activation buffers + per-CPU tokenization
+              # workers stack up: pods OOM'd at both 8192 and 2048 max-batch-tokens
+              # with 6Gi. 10Gi gives comfortable headroom for warmup + steady-state.
+              # Once stable for a week, observe actual RSS and right-size.
+              memory: 10Gi
+          # /health only serves 200 AFTER model download + warmup completes,
+          # so a passing probe means the service can answer /embed calls.
+          # startupProbe gives a 10-min budget for the first-start HF download
+          # (~555 MB); cached restarts flip ready in ~15s.
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 80
+            periodSeconds: 10
+            failureThreshold: 60
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 80
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 80
+            periodSeconds: 10
+            timeoutSeconds: 5
+          volumeMounts:
+            - name: model-cache
+              mountPath: /data
+  volumeClaimTemplates:
+    - metadata:
+        name: model-cache
+      spec:
+        storageClassName: gp3
+        accessModes: [ReadWriteOnce]
+        resources:
+          requests:
+            storage: 10Gi

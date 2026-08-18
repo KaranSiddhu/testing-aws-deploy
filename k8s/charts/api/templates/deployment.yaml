@@ -1,0 +1,274 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+  labels:
+    {{- include "api.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount | default 1 }}
+  selector:
+    matchLabels:
+      {{- include "api.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "api.labels" . | nindent 8 }}
+        magoneai.io/tier: backend
+    spec:
+      enableServiceLinks: false
+      serviceAccountName: magoneai-app
+      imagePullSecrets:
+        - name: magoneai-registry-credentials
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      volumes:
+        - name: model-cache
+          emptyDir:
+            sizeLimit: 10Gi
+        - name: vault-token-check
+          secret:
+            secretName: magoneai-app-secrets
+            items:
+              - key: vault-token
+                path: vault-token
+      initContainers:
+        # Block until the Vault root token has been seeded into app-secrets (the
+        # vault-init Job writes it post-unseal; ESO syncs it). Without this the app
+        # container can start with an empty VAULT_TOKEN and crash-loop until ESO
+        # catches up. The mounted secret refreshes, so this clears on its own.
+        - name: wait-for-vault-token
+          image: busybox:1.36
+          command: ["sh", "-c", "until [ -s /vault/vault-token ]; do echo 'waiting for vault-token to be seeded...'; sleep 5; done"]
+          volumeMounts:
+            - name: vault-token-check
+              mountPath: /vault
+        - name: db-migrate
+          image: "{{ .Values.image.repository }}:{{ required "image.tag is required" .Values.image.tag }}"
+          imagePullPolicy: IfNotPresent
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -e
+              echo "=== Running DB migration ==="
+              python3 -c "
+              import asyncio, asyncpg, os, urllib.parse, subprocess, sys
+
+              async def main():
+                  conn = await asyncpg.connect(
+                      host=os.environ['DB_HOST'], port=int(os.environ['DB_PORT']),
+                      user=os.environ['DB_USER'], password=os.environ['DB_PASSWORD'],
+                      database=os.environ['DB_NAME'], ssl='require')
+
+                  # Advisory lock to serialize across replicas
+                  await conn.execute('SELECT pg_advisory_lock(72981365)')
+                  print('Acquired migration lock.')
+
+                  try:
+                      # Ensure extensions exist
+                      await conn.execute('CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\"')
+                      await conn.execute('CREATE EXTENSION IF NOT EXISTS \"pgcrypto\"')
+
+                      # Always run migrations. Alembic builds the full schema from
+                      # empty (001..head) on a fresh DB and applies the remainder on
+                      # an existing one. No create_all/stamp shortcut to drift out of sync.
+                      pw = urllib.parse.quote(os.environ['DB_PASSWORD'], safe='')
+                      os.environ['DATABASE_URL'] = f\"postgresql+asyncpg://{os.environ['DB_USER']}:{pw}@{os.environ['DB_HOST']}:{os.environ['DB_PORT']}/{os.environ['DB_NAME']}?ssl=require\"
+                      print('Running alembic upgrade head...')
+                      r = subprocess.run(['alembic', 'upgrade', 'head'], env=os.environ)
+                      if r.returncode != 0:
+                          sys.exit(r.returncode)
+                      print('Migrations complete.')
+                  finally:
+                      await conn.execute('SELECT pg_advisory_unlock(72981365)')
+                      await conn.close()
+                      print('Released migration lock.')
+
+              asyncio.run(main())
+              "
+              echo "=== DB migration complete ==="
+          env:
+            - name: DB_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: magoneai-db-credentials
+                  key: host
+            - name: DB_PORT
+              valueFrom:
+                secretKeyRef:
+                  name: magoneai-db-credentials
+                  key: port
+            - name: DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: magoneai-db-credentials
+                  key: username
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: magoneai-db-credentials
+                  key: password
+            - name: DB_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: magoneai-db-credentials
+                  key: database
+          resources:
+            requests:
+              cpu: 250m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+      containers:
+        - name: api
+          image: "{{ .Values.image.repository }}:{{ required "image.tag is required" .Values.image.tag }}"
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8000
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+          env:
+            - name: APP_ENV
+              value: {{ required "appEnv is required" .Values.appEnv | quote }}
+            - name: LOG_FORMAT
+              value: "json"
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: magoneai-db-credentials
+                  key: connection-string
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: magoneai-app-secrets
+                  key: redis-password
+            - name: REDIS_URL
+              value: "redis://:$(REDIS_PASSWORD)@redis:6379/0"
+            - name: SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: magoneai-app-secrets
+                  key: app-secret-key
+            - name: MINIO_ENDPOINT
+              valueFrom:
+                secretKeyRef:
+                  name: magoneai-s3-credentials
+                  key: endpoint
+            - name: MINIO_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: magoneai-s3-credentials
+                  key: access-key
+            - name: MINIO_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: magoneai-s3-credentials
+                  key: secret-key
+            - name: MINIO_BUCKET
+              valueFrom:
+                secretKeyRef:
+                  name: magoneai-s3-credentials
+                  key: bucket
+            - name: MINIO_USE_SSL
+              value: "true"
+            - name: QDRANT_HOST
+              value: qdrant
+            - name: QDRANT_PORT
+              value: "6333"
+            # Dense embedding via TEI (charts/tei-dense). Sparse BM25 stays
+            # in-process via fastembed — no second model service needed.
+            - name: EMBEDDING_DENSE_URL
+              value: "http://tei-dense:80"
+            - name: VAULT_URL
+              value: "http://vault:8200"
+            - name: VAULT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: magoneai-app-secrets
+                  key: vault-token
+            - name: MCP_SERVICE_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: magoneai-app-secrets
+                  key: mcp-service-token
+            - name: API_KEY_ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: magoneai-app-secrets
+                  key: api-key-encryption-key
+            - name: SYSTEM_EMAIL_PROVIDER
+              value: {{ required "email.provider is required" .Values.email.provider | quote }}
+            - name: SYSTEM_EMAIL_FROM
+              value: {{ required "email.from is required" .Values.email.from | quote }}
+            {{- if .Values.email.welcomeCc }}
+            - name: WELCOME_EMAIL_CC
+              value: {{ .Values.email.welcomeCc | quote }}
+            {{- end }}
+            - name: SYSTEM_EMAIL_FROM_NAME
+              value: {{ required "email.fromName is required" .Values.email.fromName | quote }}
+            - name: SYSTEM_EMAIL_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: magoneai-app-secrets
+                  key: system-email-api-key
+            - name: TEMPORAL_HOST
+              value: "temporal-server-frontend:7233"
+            - name: TEMPORAL_NAMESPACE
+              value: magoneai
+            - name: TEMPORAL_TASK_QUEUE
+              value: magoneai
+            - name: TEMPORAL_KB_TASK_QUEUE
+              value: magoneai-kb-ingestion
+            - name: APP_URL
+              value: {{ required "appUrl is required" .Values.appUrl | quote }}
+            - name: FRONTEND_URL
+              value: {{ required "appUrl is required" .Values.appUrl | quote }}
+            - name: CORS_ORIGINS
+              value: {{ required "appUrl is required" .Values.appUrl | quote }}
+            - name: LOKI_URL
+              value: "http://loki:3100"
+            - name: FIXED_SAMPLING_MODELS
+              value: "gpt-5,gpt-5.4-nano,gpt-5.4-mini,o1,o1-mini,o1-preview,o3-mini"
+            - name: HOME
+              value: /tmp
+            - name: HF_HOME
+              value: /tmp/hf-cache
+            - name: TRANSFORMERS_CACHE
+              value: /tmp/hf-cache
+            - name: XDG_CACHE_HOME
+              value: /tmp/hf-cache
+          volumeMounts:
+            - name: model-cache
+              mountPath: /tmp/hf-cache
+          resources:
+            requests:
+              cpu: 500m
+              memory: 2Gi
+            limits:
+              cpu: 2000m
+              memory: 6Gi
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 30
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 5
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            periodSeconds: 15
+            timeoutSeconds: 10

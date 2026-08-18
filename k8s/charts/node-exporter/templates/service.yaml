@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: node-exporter
+  labels:
+    {{- include "node-exporter.labels" . | nindent 4 }}
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9100"
+    prometheus.io/path: /metrics
+spec:
+  type: ClusterIP
+  clusterIP: None
+  selector:
+    {{- include "node-exporter.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: metrics
+      port: 9100
+      targetPort: metrics
+      protocol: TCP

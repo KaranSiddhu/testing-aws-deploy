@@ -1,0 +1,5 @@
+# Let's Encrypt ClusterIssuer (HTTP-01) + the product TLS Ingress.
+# All product services share one certificate by sharing one host (path routing):
+#   /api → api   /hub → consumer   /superadmin → superadmin   / → web
+host: ""  # product hostname, e.g. app.example.com
+email: "" # Let's Encrypt ACME account email

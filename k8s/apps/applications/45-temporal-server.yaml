@@ -1,0 +1,101 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: temporal-server
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: '3'
+  finalizers:
+  - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://temporalio.github.io/helm-charts
+    chart: temporal
+    targetRevision: 0.73.1
+    helm:
+      releaseName: temporal-server
+      valuesObject:
+        global:
+          defaultImageRegistry: docker.io/
+        server:
+          image:
+            repository: docker.io/temporalio/server
+            tag: 1.29.1
+          replicaCount: 1
+          config:
+            persistence:
+              default:
+                driver: sql
+                sql:
+                  driver: postgres12
+                  host: temporal-pg.magoneai.svc.cluster.local
+                  port: 5432
+                  database: temporal
+                  user: magoneaiadmin
+                  existingSecret: magoneai-temporal-db-credentials
+                  maxConns: 20
+                  maxConnLifetime: 1h
+                  tls:
+                    enabled: true
+                    enableHostVerification: false
+              visibility:
+                driver: sql
+                sql:
+                  driver: postgres12
+                  host: temporal-pg.magoneai.svc.cluster.local
+                  port: 5432
+                  database: temporal_visibility
+                  user: magoneaiadmin
+                  existingSecret: magoneai-temporal-db-credentials
+                  maxConns: 20
+                  maxConnLifetime: 1h
+                  tls:
+                    enabled: true
+                    enableHostVerification: false
+          frontend:
+            service:
+              type: ClusterIP
+              port: 7233
+        admintools:
+          enabled: true
+          image:
+            repository: docker.io/temporalio/admin-tools
+            tag: 1.29.1-tctl-1.18.4-cli-1.5.0
+        web:
+          enabled: false
+        schema:
+          createDatabase:
+            enabled: false
+          setup:
+            enabled: false
+          update:
+            enabled: false
+        cassandra:
+          enabled: false
+        mysql:
+          enabled: false
+        postgresql:
+          enabled: false
+        elasticsearch:
+          enabled: false
+        grafana:
+          enabled: false
+        prometheus:
+          enabled: false
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: magoneai
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+    - ServerSideApply=true
+    - CreateNamespace=false
+    retry:
+      limit: 8
+      backoff:
+        duration: 15s
+        factor: 2
+        maxDuration: 5m

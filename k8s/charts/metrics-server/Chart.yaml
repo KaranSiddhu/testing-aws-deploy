@@ -1,0 +1,6 @@
+apiVersion: v2
+name: metrics-server
+description: Kubernetes Metrics Server — Resource Metrics API (enables `kubectl top` and CPU/memory HPA).
+type: application
+version: 0.1.0
+appVersion: "0.7.2"

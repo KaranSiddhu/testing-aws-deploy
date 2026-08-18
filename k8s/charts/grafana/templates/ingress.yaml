@@ -1,0 +1,26 @@
+{{- if and .Values.host .Values.ingress.enabled .Values.ingress.allowedCidrs }}
+# Grafana at https://{{ .Values.host }}. Gets its own HTTP-01 cert (grafana-tls) via
+# the same ClusterIssuer the product ingress uses; external-dns creates the record.
+# Exposed ONLY when ingress.allowedCidrs is set (IP allowlist). Empty allowlist ⇒ no
+# Ingress, so Grafana stays internal (kubectl port-forward). Grafana's own login is
+# the second layer.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: grafana
+  namespace: magoneai
+  annotations:
+    cert-manager.io/cluster-issuer: {{ .Values.ingress.clusterIssuer | quote }}
+    nginx.ingress.kubernetes.io/whitelist-source-range: {{ .Values.ingress.allowedCidrs | quote }}
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+spec:
+  ingressClassName: {{ .Values.ingress.className | quote }}
+  tls:
+    - hosts: [{{ .Values.host | quote }}]
+      secretName: grafana-tls
+  rules:
+    - host: {{ .Values.host | quote }}
+      http:
+        paths:
+          - { path: /, pathType: Prefix, backend: { service: { name: grafana, port: { number: 3000 } } } }
+{{- end }}

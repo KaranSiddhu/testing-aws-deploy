@@ -1,0 +1,8 @@
+# The superadmin portal — Next.js admin UI served under /superadmin, where the
+# superadmin creates/manages organizations (talks to /api).
+#
+# Image is the only thing that meaningfully changes between deploys.
+image:
+  repository: docker.io/magureai/magoneai-superadmin
+  tag: ""        # REQUIRED — image tag to deploy
+replicaCount: 1

@@ -1,0 +1,63 @@
+# temporal-pg ExternalName → RDS. The externalName is a Service spec field (not env),
+# so a tiny RBAC'd Job reads db-host from the deployment-config Secret and applies it.
+# The temporal Helm values reference the stable name temporal-pg.magoneai.svc
+# — see the temporal-server app.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: temporal-bootstrap
+  namespace: magoneai
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: temporal-bootstrap
+  namespace: magoneai
+rules:
+  - apiGroups: [""]
+    resources: [services]
+    verbs: [get, create, update, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: temporal-bootstrap
+  namespace: magoneai
+roleRef: { apiGroup: rbac.authorization.k8s.io, kind: Role, name: temporal-bootstrap }
+subjects:
+  - { kind: ServiceAccount, name: temporal-bootstrap, namespace: magoneai }
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: temporal-pg-endpoint
+  namespace: magoneai
+  labels:
+    app.kubernetes.io/part-of: magoneai
+spec:
+  backoffLimit: 5
+  ttlSecondsAfterFinished: 600
+  template:
+    spec:
+      restartPolicy: OnFailure
+      serviceAccountName: temporal-bootstrap
+      containers:
+        - name: apply-externalname
+          image: docker.io/alpine/k8s:1.31.3
+          command: [sh, -ec]
+          args:
+            - |
+              cat <<EOF | kubectl apply -f -
+              apiVersion: v1
+              kind: Service
+              metadata:
+                name: temporal-pg
+                namespace: magoneai
+                labels: { app.kubernetes.io/part-of: magoneai }
+              spec:
+                type: ExternalName
+                externalName: "$DB_HOST"
+              EOF
+              echo "temporal-pg -> $DB_HOST"
+          env:
+            - { name: DB_HOST, valueFrom: { secretKeyRef: { name: deployment-config, key: db-host } } }

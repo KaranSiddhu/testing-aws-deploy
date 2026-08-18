@@ -1,0 +1,10 @@
+image:
+  repository: docker.io/hashicorp/vault
+  tag: "1.18"
+# init hook uses python+boto3 to init Vault and write the root token to Secrets Manager.
+initImage:
+  repository: docker.io/python
+  tag: "3.11-slim"
+# SM secret the init hook writes the Vault token to (its own secret; ESO merges it
+# into the app-secrets k8s Secret). Prefix = deployment.
+vaultTokenSmName: ""   # REQUIRED — e.g. magoneai-vault-token

@@ -1,0 +1,6 @@
+apiVersion: v2
+name: tei-dense
+description: MagOneAI TEI (Text Embeddings Inference) service serving INT8 BGE-M3 ONNX for dense embeddings (hybrid retrieval; sparse BM25 runs in-process in the app workers).
+type: application
+version: 0.1.0
+appVersion: "1.9"

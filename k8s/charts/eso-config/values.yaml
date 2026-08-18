@@ -1,0 +1,3 @@
+# Set per-deployment.
+smPrefix: ""        # REQUIRED — the Secrets Manager prefix (e.g. magoneai-app)
+region: us-east-1

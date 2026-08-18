@@ -1,0 +1,6 @@
+# Metrics Server is deployed into kube-system (the Resource Metrics API must be
+# cluster-scoped). On EKS the kubelet serving certs are signed by the cluster CA,
+# so --kubelet-insecure-tls is NOT used (EKS serves kubelet certs signed by the cluster CA).
+image:
+  repository: registry.k8s.io/metrics-server/metrics-server
+  tag: "v0.7.2"

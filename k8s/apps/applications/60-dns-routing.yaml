@@ -1,0 +1,34 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: dns-routing
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: '6'
+  finalizers:
+  - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: git@github.com:KaranSiddhu/testing-aws-magure-deploy.git
+    targetRevision: main
+    path: k8s/charts/dns-routing
+    helm:
+      valuesObject:
+        host: app.lab.karansiddhu.com
+        email: praduman@magureinc.com
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: magoneai
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+    - ServerSideApply=true
+    retry:
+      limit: 8
+      backoff:
+        duration: 15s
+        factor: 2
+        maxDuration: 5m

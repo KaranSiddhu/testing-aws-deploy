@@ -1,0 +1,6 @@
+apiVersion: v2
+name: kb-worker
+description: MagOneAI knowledge-base ingestion worker (Temporal activity processor).
+type: application
+version: 0.1.0
+appVersion: "1.0"

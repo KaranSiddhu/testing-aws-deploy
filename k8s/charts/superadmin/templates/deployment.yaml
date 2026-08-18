@@ -1,0 +1,62 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: superadmin
+  labels:
+    {{- include "superadmin.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount | default 1 }}
+  selector:
+    matchLabels:
+      {{- include "superadmin.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "superadmin.labels" . | nindent 8 }}
+        magoneai.io/tier: frontend
+    spec:
+      imagePullSecrets:
+        - name: magoneai-registry-credentials
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+        - name: superadmin
+          image: "{{ .Values.image.repository }}:{{ required "image.tag is required" .Values.image.tag }}"
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 3000
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+          env:
+            - name: NEXT_PUBLIC_API_URL
+              value: "/api"
+            - name: BASE_PATH
+              value: /superadmin
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 300m
+              memory: 256Mi
+          startupProbe:
+            httpGet:
+              path: /superadmin
+              port: 3000
+            failureThreshold: 30
+            periodSeconds: 2
+          livenessProbe:
+            httpGet:
+              path: /superadmin
+              port: 3000
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /superadmin
+              port: 3000
+            periodSeconds: 5

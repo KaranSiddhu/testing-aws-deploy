@@ -1,0 +1,6 @@
+apiVersion: v2
+name: consumer
+description: MagOneAI consumer-facing Next.js frontend (hub).
+type: application
+version: 0.1.0
+appVersion: "1.0"

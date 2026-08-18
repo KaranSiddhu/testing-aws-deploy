@@ -1,0 +1,4 @@
+apiVersion: v2
+name: eso-config
+description: ClusterSecretStore + ExternalSecrets, prefix/region from values (config-as-data).
+version: 0.1.0

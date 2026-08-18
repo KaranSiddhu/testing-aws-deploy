@@ -1,0 +1,44 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: grafana
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: '50'
+  finalizers:
+  - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: git@github.com:KaranSiddhu/testing-aws-magure-deploy.git
+    targetRevision: main
+    path: k8s/charts/grafana
+    helm:
+      valuesObject:
+        host: grafana.lab.karansiddhu.com
+        ingress:
+          # Set to your admin CIDR(s), comma-separated, to expose Grafana with an IP
+          # allowlist. Empty/unset ⇒ no Ingress (Grafana stays internal, port-forward).
+          allowedCidrs: ""
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: magoneai
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+    - ServerSideApply=true
+    - RespectIgnoreDifferences=true
+    retry:
+      limit: 8
+      backoff:
+        duration: 15s
+        factor: 2
+        maxDuration: 5m
+  ignoreDifferences:
+  - group: apps
+    kind: StatefulSet
+    name: grafana
+    jsonPointers:
+    - /spec/volumeClaimTemplates

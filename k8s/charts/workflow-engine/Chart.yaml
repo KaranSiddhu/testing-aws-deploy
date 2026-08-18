@@ -1,0 +1,6 @@
+apiVersion: v2
+name: workflow-engine
+description: MagOneAI Temporal worker for workflow execution (main task queue).
+type: application
+version: 0.1.0
+appVersion: "1.0"
