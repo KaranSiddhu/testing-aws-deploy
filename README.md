@@ -21,7 +21,7 @@ Built phase by phase. See `../../LEARNING-ROADMAP.md` for the full plan.
 | 2 | `kind/`, `k8s/raw/` - a local cluster and hand-written manifests | done |
 | 3 | `k8s/charts/` + `validate.sh` - the same objects as Helm charts, `k8s/raw/` deleted | done |
 | 4 | `k8s/argocd/` - AppProject, app-of-apps, one Application per chart | done |
-| 5 | `k8s/k8s-config/` - imperative bootstrap, ingress, `apply.sh` | in progress |
+| 5 | `k8s/k8s-config/` - imperative bootstrap, ingress, `apply.sh` | done |
 | 5 | `k8s/k8s-config/` - imperative bootstrap | not started |
 | 6 | `terraform/` - VPC, EKS, RDS | not started |
 | 7 | `images/` - ECR mirroring, and EKS deployment | not started |

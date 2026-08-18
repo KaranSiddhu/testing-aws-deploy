@@ -1,8 +1,30 @@
 # 06-ingress
 
-Installs the ingress controller. No manifests live here: `apply.sh` applies the
-upstream kind-provider manifest, pinned to `$INGRESS_NGINX_VERSION` from
-`env.sh`.
+Installs the ingress controller: the upstream kind-provider manifest, pinned to
+`controller-v1.15.1` and patched by `kustomization.yaml`.
+
+## The patch, and why it is not optional
+
+The upstream manifest sets only:
+
+```yaml
+nodeSelector:
+  kubernetes.io/os: linux
+```
+
+It **tolerates** the control-plane taint but does not **require** that node. On
+a single-node kind cluster that is harmless. On our three-node cluster the
+scheduler put the controller on a worker - and only the control-plane has the
+`8080->80` host port mapping from `kind/cluster.yaml`.
+
+The failure mode is the nasty kind: every pod Healthy, every Application
+Synced, the Ingress objects showing an ADDRESS, and `curl` returning nothing at
+all. Nothing errored. The controller was running correctly, listening on a port
+of a machine you cannot reach.
+
+`kustomization.yaml` adds `ingress-ready: "true"` to the nodeSelector. That
+label is set in `kind/cluster.yaml`, and until this patch existed it was
+decorative.
 
 ## What an ingress controller actually is
 

@@ -132,6 +132,26 @@ you.**
   truncates the URL. The error is `could not translate host name`, which sends
   you looking at DNS. `apply.sh` derives `POSTGRES_PASSWORD_ENCODED` for this.
 
+- **A healthy component in the wrong place looks exactly like a working one.**
+  The ingress-nginx kind manifest sets `nodeSelector: {kubernetes.io/os: linux}`
+  and merely TOLERATES the control-plane taint. On a single-node kind cluster
+  (what everyone tests with) there is nowhere else to go. On a three-node
+  cluster the scheduler put the controller on a worker, and only the
+  control-plane has the 8080->80 host port mapping from `kind/cluster.yaml`.
+  Result: every pod Running, every Application Synced/Healthy, both Ingress
+  objects showing an ADDRESS, and `curl` returning nothing. Nothing failed, so
+  nothing reported an error. `kubectl get pods` cannot show this; only
+  `-o wide`, compared against where the ports actually are. Fixed by a kustomize
+  patch adding `ingress-ready: "true"` to the nodeSelector. Generalise it: not
+  every failure is a crash, and a health check will never tell you a component
+  is in the wrong place.
+
+- **Kustomize resolves `resources` URLs before variable substitution.** A `$VAR`
+  in a remote resource URL is taken literally, so a version pin cannot come from
+  `env.sh`. Both `06-ingress` and `10-argocd` pin their versions inside
+  `kustomization.yaml` for this reason. Config that looks live but is inert is
+  worse than no config.
+
 - **`ingressClassName` is not optional.** An Ingress without it is ignored by
   every controller unless one is marked cluster-default. The object exists,
   looks correct, and receives no traffic at all.

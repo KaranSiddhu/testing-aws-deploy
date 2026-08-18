@@ -1,0 +1,46 @@
+# ingress-nginx install, pinned and patched.
+#
+# WHY THIS IS A KUSTOMIZATION AND NOT JUST `kubectl apply -f <url>`:
+#
+# The upstream kind-provider manifest binds the controller to hostPort 80 and
+# 443 on whatever node it lands on, but its nodeSelector is only:
+#
+#     nodeSelector:
+#       kubernetes.io/os: linux
+#
+# It TOLERATES the control-plane taint but does not REQUIRE that node. On a
+# single-node kind cluster that is harmless, because there is nowhere else to
+# go. On our three-node cluster the scheduler picked a worker - and only the
+# control-plane has the 8080->80 host port mapping from kind/cluster.yaml.
+#
+# The symptom is bad: everything reports Healthy, the Ingress objects show an
+# ADDRESS, and curl returns nothing at all. There is no error anywhere, because
+# nothing failed. The controller is running perfectly, listening on a port on a
+# machine you cannot reach.
+#
+# The patch below adds the missing nodeSelector, so the controller lands on the
+# node whose ports are actually mapped. The `ingress-ready: "true"` label set in
+# kind/cluster.yaml exists for precisely this and, until now, was decorative.
+#
+# Version pinned here rather than in env.sh: kustomize resolves `resources`
+# before any variable substitution could happen, so a $VAR in the URL is taken
+# literally. Same reason as 10-argocd/kustomization.yaml.
+#
+# controller-v1.15.1 is the FINAL release. The Kubernetes project retired
+# ingress-nginx on 2026-03-23 and archived the repository: no further releases,
+# no security patches ever. See README.md in this directory for why it is still
+# used here and what replaces it in Phase 7.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.15.1/deploy/static/provider/kind/deploy.yaml
+
+patches:
+  - target:
+      kind: Deployment
+      name: ingress-nginx-controller
+    patch: |
+      - op: add
+        path: /spec/template/spec/nodeSelector/ingress-ready
+        value: "true"

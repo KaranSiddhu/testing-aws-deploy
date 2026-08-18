@@ -49,7 +49,7 @@ source "$ENV_FILE"
 # error that points at the database rather than at env.sh.
 # ---------------------------------------------------------------------------
 for var in NS POSTGRES_USER POSTGRES_PASSWORD POSTGRES_DB \
-  APP_HOST ARGOCD_HOST ARGOCD_VERSION INGRESS_NGINX_VERSION; do
+  APP_HOST ARGOCD_HOST; do
   if [[ -z "${!var:-}" || "${!var:-}" == REPLACE_* ]]; then
     echo "ERROR: $var is unset, empty, or still a REPLACE_ placeholder in env.sh"
     exit 1
@@ -107,9 +107,11 @@ phase_00() {
 # node labelled ingress-ready=true, which kind/cluster.yaml sets.
 # ---------------------------------------------------------------------------
 phase_06() {
-  log "06-ingress: ingress-nginx ${INGRESS_NGINX_VERSION}"
-  kubectl apply -f \
-    "https://raw.githubusercontent.com/kubernetes/ingress-nginx/${INGRESS_NGINX_VERSION}/deploy/static/provider/kind/deploy.yaml"
+  log "06-ingress: ingress-nginx"
+  # Kustomization rather than a bare URL, because the upstream manifest needs a
+  # nodeSelector patch to land on the node whose ports kind actually maps.
+  # See 06-ingress/kustomization.yaml.
+  kubectl apply -k "${SCRIPT_DIR}/06-ingress"
 
   echo "  waiting for the controller to be ready..."
   # The admission webhook rejects Ingress objects until it is up, so creating a
@@ -124,7 +126,7 @@ phase_06() {
 # 10-argocd: ArgoCD, then the bootstrap that hands everything else over to it.
 # ---------------------------------------------------------------------------
 phase_10() {
-  log "10-argocd: install ${ARGOCD_VERSION}"
+  log "10-argocd: install"
   kubectl create namespace argocd --dry-run=client -o yaml | kubectl apply -f -
 
   # --server-side --force-conflicts is required: ArgoCD's CRDs are larger than
