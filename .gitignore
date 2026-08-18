@@ -16,10 +16,12 @@ crash.log
 *.tfvars.local
 generated/
 
-# Files rendered from a .tpl by envsubst. The .tpl is committed, the rendered
-# output is not, because rendering is what injects the secrets.
-k8s/k8s-config/**/*.yaml
-!k8s/k8s-config/**/*.yaml.tpl
+# Rendered .tpl outputs are ignored by k8s/k8s-config/.gitignore, which lists
+# them one by one.
+#
+# A glob was tried here first and was wrong: `k8s/k8s-config/**/*.yaml` also
+# matches kustomization.yaml, which MUST be committed. Listing each rendered
+# file explicitly, as trinity does, makes that impossible to get wrong.
 
 # OS / editor
 .DS_Store

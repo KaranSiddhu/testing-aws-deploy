@@ -106,6 +106,41 @@ you.**
   a mapping leaves the indentation before it behind as a stray blank line in the
   output - keep explanatory blocks at the top of the file.
 
+- **Any chart with a StatefulSet needs `ignoreDifferences` on
+  `volumeClaimTemplates`.** The API server defaults `apiVersion`, `kind`,
+  `spec.volumeMode` and `status` into each entry, the chart never wrote them, so
+  ArgoCD sees a diff - and `volumeClaimTemplates` is IMMUTABLE, so it can never
+  resolve it. The Application reports Healthy and OutOfSync forever while every
+  sync "succeeds". Open ArgoCD issue since 2019 (#1729, #4126, #11143). Every
+  StatefulSet hits it: in the real repos that is qdrant, redis, loki, grafana
+  and prometheus. It matters because a permanently-OutOfSync Application is an
+  alarm that is always on, and after a week nobody looks at it.
+
+- **`RespectIgnoreDifferences=true` must accompany `ignoreDifferences`.**
+  Without it ArgoCD still sends the ignored fields on every sync, which under
+  ServerSideApply means it keeps claiming ownership of fields it was just told
+  to ignore.
+
+- **`envsubst` renders an unset variable as an empty string and exits 0.** It
+  does not fail, and `set -u` does not save you because the variable is expanded
+  by envsubst rather than by the shell. A typo in a variable name silently
+  produces a Secret with a blank password that applies cleanly and fails much
+  later as an authentication error pointing at the database. `apply.sh`
+  validates every variable before rendering anything, for this reason alone.
+
+- **A password in a connection URL must be URL-encoded.** A raw `@ : / ? # &`
+  truncates the URL. The error is `could not translate host name`, which sends
+  you looking at DNS. `apply.sh` derives `POSTGRES_PASSWORD_ENCODED` for this.
+
+- **`ingressClassName` is not optional.** An Ingress without it is ignored by
+  every controller unless one is marked cluster-default. The object exists,
+  looks correct, and receives no traffic at all.
+
+- **ArgoCD behind an ingress needs `server.insecure=true`.** By default
+  argocd-server terminates TLS itself; put ingress-nginx in front and nginx
+  speaks HTTP to a backend expecting TLS, giving a redirect loop or a 502 with
+  nothing about TLS in any log. `10-argocd/kustomization.yaml` patches it.
+
 - **Port 5432 is taken locally.** A Homebrew PostgreSQL owns it on this Mac, so
   `docker/compose.dev.yaml` maps `5433:5432`. Only the host-side number changed;
   container-to-container traffic never touched it.

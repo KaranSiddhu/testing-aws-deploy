@@ -1,0 +1,44 @@
+# ArgoCD install, pinned and patched.
+#
+# Applied with `kubectl apply -k`, which runs kustomize. Kustomize takes an
+# upstream manifest you do not control and layers your changes on top, without
+# forking it. Upgrading is then a one-line version bump rather than a merge.
+#
+# WHY THE VERSION IS PINNED HERE AND NOT TAKEN FROM env.sh:
+# kustomize resolves `resources` before any variable substitution could happen,
+# so a $VAR in the URL would be taken literally. One hardcoded version in one
+# file is clearer than a broken indirection. Bump it here.
+#
+# Never `stable`. A bootstrap that installs a different version depending on the
+# day it runs is not a bootstrap, and Phase 8 (rebuild from zero) means nothing
+# if the result varies.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: argocd
+
+resources:
+  - https://raw.githubusercontent.com/argoproj/argo-cd/v3.5.1/manifests/install.yaml
+
+patches:
+  # Run argocd-server without its own TLS.
+  #
+  # By default argocd-server terminates TLS itself and serves HTTPS on 443. Put
+  # an ingress-nginx Ingress in front of that and you get a double-TLS problem:
+  # nginx speaks plain HTTP to the backend, argocd-server expects TLS, and the
+  # result is an endless redirect loop or a 502 - neither of which mentions TLS.
+  #
+  # With server.insecure=true, argocd-server serves plain HTTP and the ingress
+  # controller terminates TLS at the edge, which is the normal arrangement.
+  #
+  # "insecure" names the backend hop, not the whole path. On this local cluster
+  # that hop is inside the cluster network. In production you would still
+  # terminate TLS at the ingress; the ArgoCD docs describe exactly this setup.
+  - target:
+      kind: ConfigMap
+      name: argocd-cmd-params-cm
+    patch: |
+      - op: add
+        path: /data
+        value:
+          server.insecure: "true"

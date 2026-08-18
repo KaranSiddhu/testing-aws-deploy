@@ -20,7 +20,8 @@ Built phase by phase. See `../../LEARNING-ROADMAP.md` for the full plan.
 |---|---|---|
 | 2 | `kind/`, `k8s/raw/` - a local cluster and hand-written manifests | done |
 | 3 | `k8s/charts/` + `validate.sh` - the same objects as Helm charts, `k8s/raw/` deleted | done |
-| 4 | `k8s/argocd/` - GitOps | in progress |
+| 4 | `k8s/argocd/` - AppProject, app-of-apps, one Application per chart | done |
+| 5 | `k8s/k8s-config/` - imperative bootstrap, ingress, `apply.sh` | in progress |
 | 5 | `k8s/k8s-config/` - imperative bootstrap | not started |
 | 6 | `terraform/` - VPC, EKS, RDS | not started |
 | 7 | `images/` - ECR mirroring, and EKS deployment | not started |
@@ -39,10 +40,14 @@ k8s/
   argocd/
     bootstrap/         [4] the root app-of-apps
     applications/      [4] one Application per chart
-  k8s-config/          [5] imperative bootstrap, numbered phases
+  k8s-config/          imperative bootstrap, run by hand, in order
+    00-foundation      namespace + db-credentials Secret
+    06-ingress         ingress-nginx
+    07-routes          the app's Ingress
+    10-argocd          ArgoCD install + handover to GitOps
     apply.sh
     env.sh.example
-  validate.sh          [3] renders every chart the way ArgoCD will
+  validate.sh          renders every chart the way ArgoCD will
 
 terraform/             [6]
   modules/aws/         reusable, one concern each
@@ -59,40 +64,51 @@ images/                [7] image manifest, ECR mirror, digest stamping
 The gaps in the layer numbers are deliberate, copied from AWNIC: a new layer
 can be inserted without renumbering everything after it.
 
-## Quickstart
+## Cold start
 
 ```bash
-# 1. create the local cluster (about a minute)
 kind create cluster --config kind/cluster.yaml
 
-# 2. create the namespace
-kubectl create namespace dummy-hello
+cd k8s/k8s-config
+cp env.sh.example env.sh        # fill in POSTGRES_PASSWORD
+./apply.sh
 
-# 3. create the secret BY HAND. It is never written to a file.
-#    Phase 5 replaces this with env.sh + envsubst.
-PGPASS='<password>'
-kubectl create secret generic db-credentials --namespace dummy-hello \
-  --from-literal=POSTGRES_USER='hello' \
-  --from-literal=POSTGRES_PASSWORD="$PGPASS" \
-  --from-literal=POSTGRES_DB='hello' \
-  --from-literal=DATABASE_URL="postgresql+asyncpg://hello:${PGPASS}@postgres:5432/hello"
-
-# 4. check the charts render, then install them
-./k8s/validate.sh
-helm upgrade --install postgres k8s/charts/postgres -n dummy-hello
-helm upgrade --install be       k8s/charts/be       -n dummy-hello
-helm upgrade --install fe       k8s/charts/fe       -n dummy-hello
-
-# 5. watch it come up
-kubectl get pods -n dummy-hello -w
-
-# 6. reach the app
-kubectl port-forward -n dummy-hello svc/fe 3000:3000
-# then open http://localhost:3000
+kubectl get applications -n argocd -w
 ```
 
-To deploy a new build, edit `image.tag` in the chart's `values.yaml` and run
-`helm upgrade --install` again. Never `--set` - see `CLAUDE.md`.
+Then:
+
+- app: http://dummy-hello.localtest.me:8080
+- argocd: http://argocd.localtest.me:8080
+
+`localtest.me` resolves to `127.0.0.1`, so no `/etc/hosts` editing is needed.
+Port 8080 is mapped to the cluster's port 80 by `kind/cluster.yaml`.
+
+ArgoCD admin password:
+
+```bash
+kubectl -n argocd get secret argocd-initial-admin-secret \
+  -o jsonpath='{.data.password}' | base64 -d; echo
+```
+
+`apply.sh` handles the namespace, the `db-credentials` Secret, ingress-nginx,
+ArgoCD, and the handover to GitOps. Full detail in
+`k8s/k8s-config/README.md`.
+
+Tear it all down with `kind delete cluster --name dummy-hello`. Nothing outside
+Docker is touched.
+
+## Deploying
+
+Edit `image.tag` in the chart's `values.yaml`, commit, push. ArgoCD does the
+rest. Never `helm --set`, never `kubectl apply` a workload - ArgoCD self-heals
+and reverts both. See `CLAUDE.md`.
+
+Before committing:
+
+```bash
+./k8s/validate.sh
+```
 
 Tear it all down with `kind delete cluster --name dummy-hello`. Nothing outside
 Docker is touched.

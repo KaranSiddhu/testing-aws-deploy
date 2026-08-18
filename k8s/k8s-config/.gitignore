@@ -1,0 +1,13 @@
+# Operator-local environment file. Contains the database password.
+env.sh
+
+# Rendered .tpl outputs. These contain plaintext secrets and per-deploy values
+# after envsubst, so the .tpl is committed and the result never is.
+#
+# Listed one by one rather than as a glob, deliberately: adding a template is
+# then a two-line change and you cannot forget the second one silently. Copied
+# from trinity-magure-deploy/k8s/k8s-config/.gitignore.
+00-foundation/namespace.yaml
+00-foundation/secrets.yaml
+07-routes/ingress.yaml
+10-argocd/argocd-server-ingress.yaml
