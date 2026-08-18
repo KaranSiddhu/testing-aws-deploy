@@ -39,12 +39,27 @@ output "ecr_repository_urls" {
 # A ready-made DATABASE_URL, so nobody assembles it by hand and gets the
 # URL-encoding wrong.
 #
-# ?sslmode=require is not decoration: RDS enforces TLS, and the connection is
-# refused without it. Note AWNIC hit the asyncpg variant of this - asyncpg
-# ignores sslmode= and needs ?ssl=require instead. SQLAlchemy translates
-# sslmode for asyncpg, so this form works here.
+# ?ssl=require, NOT ?sslmode=require.
+#
+# RDS enforces TLS, so some SSL parameter is mandatory - but which one depends
+# on the DRIVER, not on Postgres:
+#
+#   sslmode=   libpq's parameter. What psql and psycopg2 use, and what every
+#              AWS document and Stack Overflow answer shows.
+#   ssl=       what asyncpg uses. It does NOT understand sslmode and SQLAlchemy
+#              does NOT translate it.
+#
+# Getting it wrong fails at connect time with a message that mentions neither
+# TLS nor RDS:
+#
+#     TypeError: connect() got an unexpected keyword argument 'sslmode'
+#
+# This is documented verbatim in magoneai-awnic-deploy/CLAUDE.md - "RDS forces
+# SSL and asyncpg ignores sslmode=" - and it was still written wrong here first
+# time, which is a fair measure of how easy it is to reach for the form you have
+# seen a hundred times.
 output "database_url" {
   description = "Complete DATABASE_URL for env.sh. Read with: terraform output -raw database_url"
-  value       = "postgresql+asyncpg://${module.rds.username}:${urlencode(module.rds.password)}@${module.rds.address}:${module.rds.port}/${module.rds.db_name}?sslmode=require"
+  value       = "postgresql+asyncpg://${module.rds.username}:${urlencode(module.rds.password)}@${module.rds.address}:${module.rds.port}/${module.rds.db_name}?ssl=require"
   sensitive   = true
 }
