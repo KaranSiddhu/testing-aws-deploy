@@ -1,0 +1,46 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: postgres
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+  annotations:
+    # Wave 1: first. be's migration init container cannot do anything useful
+    # until the database is accepting connections.
+    #
+    # This annotation is ONLY honoured because this Application is a child of
+    # the root in bootstrap/01-app-of-apps.yaml. Applied on its own with
+    # kubectl it would be silently inert.
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  project: dummy-hello
+
+  source:
+    repoURL: https://github.com/KaranSiddhu/testing-aws-magure-deploy.git
+    targetRevision: main
+    # ArgoCD sees Chart.yaml here and renders the chart itself, using its own
+    # bundled Helm. It never runs `helm install`, so there is no Helm release
+    # and no stored user-supplied values.
+    #
+    # That is precisely the drift we hit in Phase 3, made impossible: git says
+    # dev-7adf167, so the cluster runs dev-7adf167 or ArgoCD reports OutOfSync.
+    # There is nowhere for a stale --set override to hide.
+    path: k8s/charts/postgres
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: dummy-hello
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 15s
+        factor: 2
+        maxDuration: 5m

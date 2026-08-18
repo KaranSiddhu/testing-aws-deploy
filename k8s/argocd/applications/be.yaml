@@ -1,0 +1,44 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: be
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+  annotations:
+    # Wave 2: after the database is Healthy.
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  project: dummy-hello
+
+  source:
+    repoURL: https://github.com/KaranSiddhu/testing-aws-magure-deploy.git
+    targetRevision: main
+    path: k8s/charts/be
+
+    # No `helm:` block, deliberately.
+    #
+    # Values could be overridden here, and the real AWNIC Applications do
+    # exactly that for per-environment settings like appUrl. But an override
+    # here is a SECOND place a value can come from, and a value that appears in
+    # both files is a value someone will eventually change in the wrong one.
+    #
+    # Keep the chart's values.yaml authoritative until an environment genuinely
+    # needs to differ. Then override the specific key here, and only that key.
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: dummy-hello
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 15s
+        factor: 2
+        maxDuration: 5m

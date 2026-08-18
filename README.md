@@ -18,9 +18,9 @@ Built phase by phase. See `../../LEARNING-ROADMAP.md` for the full plan.
 
 | Phase | Adds | Status |
 |---|---|---|
-| 2 | `kind/`, `k8s/raw/` - a local cluster and hand-written manifests | in progress |
-| 3 | `k8s/charts/` - the same thing as Helm charts, `k8s/raw/` deleted | not started |
-| 4 | `k8s/argocd/` - GitOps | not started |
+| 2 | `kind/`, `k8s/raw/` - a local cluster and hand-written manifests | done |
+| 3 | `k8s/charts/` + `validate.sh` - the same objects as Helm charts, `k8s/raw/` deleted | done |
+| 4 | `k8s/argocd/` - GitOps | in progress |
 | 5 | `k8s/k8s-config/` - imperative bootstrap | not started |
 | 6 | `terraform/` - VPC, EKS, RDS | not started |
 | 7 | `images/` - ECR mirroring, and EKS deployment | not started |
@@ -35,8 +35,7 @@ kind/                  local practice cluster (no equivalent in the real repos)
   cluster.yaml
 
 k8s/
-  raw/                 TEMPORARY, Phase 2 only. Deleted in Phase 3
-  charts/              [3] one Helm chart per component
+  charts/              one Helm chart per component: be, fe, postgres
   argocd/
     bootstrap/         [4] the root app-of-apps
     applications/      [4] one Application per chart
@@ -60,24 +59,29 @@ images/                [7] image manifest, ECR mirror, digest stamping
 The gaps in the layer numbers are deliberate, copied from AWNIC: a new layer
 can be inserted without renumbering everything after it.
 
-## Phase 2 quickstart
+## Quickstart
 
 ```bash
 # 1. create the local cluster (about a minute)
 kind create cluster --config kind/cluster.yaml
 
 # 2. create the namespace
-kubectl apply -f k8s/raw/00-namespace.yaml
+kubectl create namespace dummy-hello
 
-# 3. create the secret BY HAND. It is never written to a file
+# 3. create the secret BY HAND. It is never written to a file.
+#    Phase 5 replaces this with env.sh + envsubst.
+PGPASS='<password>'
 kubectl create secret generic db-credentials --namespace dummy-hello \
   --from-literal=POSTGRES_USER='hello' \
-  --from-literal=POSTGRES_PASSWORD='<password>' \
+  --from-literal=POSTGRES_PASSWORD="$PGPASS" \
   --from-literal=POSTGRES_DB='hello' \
-  --from-literal=DATABASE_URL='postgresql+asyncpg://hello:<password>@postgres:5432/hello'
+  --from-literal=DATABASE_URL="postgresql+asyncpg://hello:${PGPASS}@postgres:5432/hello"
 
-# 4. apply everything else
-kubectl apply -f k8s/raw/
+# 4. check the charts render, then install them
+./k8s/validate.sh
+helm upgrade --install postgres k8s/charts/postgres -n dummy-hello
+helm upgrade --install be       k8s/charts/be       -n dummy-hello
+helm upgrade --install fe       k8s/charts/fe       -n dummy-hello
 
 # 5. watch it come up
 kubectl get pods -n dummy-hello -w
@@ -86,6 +90,9 @@ kubectl get pods -n dummy-hello -w
 kubectl port-forward -n dummy-hello svc/fe 3000:3000
 # then open http://localhost:3000
 ```
+
+To deploy a new build, edit `image.tag` in the chart's `values.yaml` and run
+`helm upgrade --install` again. Never `--set` - see `CLAUDE.md`.
 
 Tear it all down with `kind delete cluster --name dummy-hello`. Nothing outside
 Docker is touched.

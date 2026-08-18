@@ -1,0 +1,35 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: fe
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+  annotations:
+    # Wave 3: last. The frontend proxies to be, so there is no point serving
+    # traffic before the API can answer.
+    argocd.argoproj.io/sync-wave: "3"
+spec:
+  project: dummy-hello
+
+  source:
+    repoURL: https://github.com/KaranSiddhu/testing-aws-magure-deploy.git
+    targetRevision: main
+    path: k8s/charts/fe
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: dummy-hello
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 15s
+        factor: 2
+        maxDuration: 5m

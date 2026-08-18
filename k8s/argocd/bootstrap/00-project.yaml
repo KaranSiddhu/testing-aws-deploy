@@ -1,0 +1,65 @@
+# AppProject scoping every Application in this repo.
+#
+# An AppProject is a boundary. It answers three questions:
+#   - which git repositories may an Application deploy FROM
+#   - which cluster and namespaces may it deploy INTO
+#   - which cluster-scoped kinds may it create
+#
+# Without one, every Application runs in the built-in "default" project, which
+# permits any repo, any namespace and any kind. A mistyped path or a compromised
+# repo could then deploy anything, anywhere.
+#
+# APPLY THIS BEFORE ANY APPLICATION. An Application naming a project that does
+# not exist sits at InvalidSpecError and never syncs, with no other symptom.
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: dummy-hello
+  namespace: argocd
+spec:
+  description: dummy-hello-app practice deployment
+
+  # HTTPS, never git@. In the real AWNIC deployment this is load-bearing:
+  # egress is filtered by AWS Network Firewall, which allowlists on the TLS SNI
+  # extension. Git over SSH on port 22 is not TLS and carries no SNI, so an
+  # ssh:// remote cannot be allowlisted by hostname at all. The symptom is a
+  # repository timeout with nothing in the ArgoCD logs about a firewall.
+  #
+  # It costs nothing to build the habit here.
+  sourceRepos:
+    - https://github.com/KaranSiddhu/testing-aws-magure-deploy.git
+
+  destinations:
+    # argocd, for the root Application's children. The child Application objects
+    # themselves live in the argocd namespace, so without this entry the root
+    # sits at OutOfSync/Missing on "namespace argocd is not permitted in
+    # project" - which reads like a bug in the root, not a missing permission.
+    - server: https://kubernetes.default.svc
+      namespace: argocd
+    # where the workloads actually go
+    - server: https://kubernetes.default.svc
+      namespace: dummy-hello
+
+  # Cluster-scoped resources this project may create.
+  #
+  # Our three charts create none: Deployments, StatefulSets, Services and
+  # PodDisruptionBudgets are all namespaced. Namespace is listed only so that a
+  # future `CreateNamespace=true` sync option works without an edit here.
+  #
+  # AWNIC's equivalent list is long (ClusterRole, CRD, APIService, webhooks,
+  # IngressClass) because it deploys controllers. Ours is short because we
+  # deploy applications. Keep it that way: the list is a security boundary, not
+  # a formality, and "*" would defeat the point of having a project at all.
+  clusterResourceWhitelist:
+    - group: ""
+      kind: Namespace
+
+  namespaceResourceWhitelist:
+    - group: "*"
+      kind: "*"
+
+  # Warn about resources in these namespaces that no Application owns, rather
+  # than deleting them. The db-credentials Secret is exactly such a resource: it
+  # is created by hand and deliberately not in git, so it must never be pruned.
+  orphanedResources:
+    warn: true
