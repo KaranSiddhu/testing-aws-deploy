@@ -1,0 +1,25 @@
+{{/*
+Headless Service (clusterIP: None).
+
+A normal Service hands out one virtual IP and load-balances across matching
+pods. Correct for interchangeable API replicas, wrong for a database: you want
+to reach one specific pod, not "whichever".
+
+Headless means DNS returns the pod's own IP instead. It is also what a
+StatefulSet's serviceName points at, which is what gives its pods stable
+per-pod DNS names.
+*/}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  labels:
+    {{- include "postgres.labels" . | nindent 4 }}
+spec:
+  clusterIP: None
+  selector:
+    {{- include "postgres.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: postgres

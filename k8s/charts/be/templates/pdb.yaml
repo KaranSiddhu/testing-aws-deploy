@@ -1,0 +1,26 @@
+{{/*
+PodDisruptionBudget. New in Phase 3, and worth understanding.
+
+It covers VOLUNTARY disruption only: draining a node for an upgrade, or the
+cluster autoscaler removing one. It tells Kubernetes "you may evict pods here,
+but never leave me with fewer than 1".
+
+Without it, draining a node can take out both replicas at once and the API is
+down during an otherwise routine maintenance operation.
+
+It does NOT protect against a crash, an OOMKill or a node dying. Nothing can:
+those are involuntary.
+
+Every first-party MagOneAI chart with more than one replica ships one of these.
+*/}}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: be-pdb
+  labels:
+    {{- include "be.labels" . | nindent 4 }}
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      {{- include "be.selectorLabels" . | nindent 6 }}

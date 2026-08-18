@@ -1,0 +1,6 @@
+apiVersion: v2
+name: fe
+description: dummy-hello-app Next.js frontend. Proxies /api to the backend at runtime, so the image is environment-independent.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

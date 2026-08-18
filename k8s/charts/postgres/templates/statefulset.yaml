@@ -1,0 +1,103 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  labels:
+    {{- include "postgres.labels" . | nindent 4 }}
+spec:
+  serviceName: postgres
+  replicas: 1
+
+  selector:
+    matchLabels:
+      {{- include "postgres.selectorLabels" . | nindent 6 }}
+
+  template:
+    metadata:
+      labels:
+        {{- include "postgres.labels" . | nindent 8 }}
+    spec:
+      enableServiceLinks: false
+
+      # NOTE: no pod-level securityContext here, unlike the be and fe charts.
+      #
+      # The official postgres image starts as root on purpose: it has to chown
+      # the data directory and initialise the cluster, and only then does its
+      # entrypoint drop to the postgres user. Forcing runAsNonRoot would make
+      # it fail on first start with a permissions error on PGDATA.
+      #
+      # Worth internalising: "run as non-root" is the right default, not a
+      # universal rule. Some images are built to drop privileges themselves,
+      # and the correct thing is to let them.
+
+      containers:
+        - name: postgres
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: IfNotPresent
+
+          ports:
+            - name: postgres
+              containerPort: 5432
+
+          env:
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: POSTGRES_PASSWORD
+            - name: POSTGRES_DB
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: POSTGRES_DB
+
+            # Data goes in a SUBDIRECTORY of the mounted volume, not its root.
+            # Some storage backends leave a lost+found directory at the root of
+            # a fresh volume, and Postgres refuses to initialise into a
+            # directory that is not empty.
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+
+          readinessProbe:
+            exec:
+              command: ["sh", "-c", "pg_isready -U $POSTGRES_USER -d $POSTGRES_DB"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+
+          livenessProbe:
+            exec:
+              command: ["sh", "-c", "pg_isready -U $POSTGRES_USER -d $POSTGRES_DB"]
+            initialDelaySeconds: 30
+            periodSeconds: 20
+            failureThreshold: 6
+
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+
+  # StatefulSet-only. Creates one PersistentVolumeClaim per pod, and it
+  # SURVIVES the pod being deleted - and survives deleting the StatefulSet
+  # itself. Removing the data takes a deliberate `kubectl delete pvc`.
+  #
+  # Helm will not delete these on `helm uninstall` either, for the same reason.
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: {{ .Values.persistence.size }}

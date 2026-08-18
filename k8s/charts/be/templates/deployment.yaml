@@ -1,0 +1,176 @@
+{{/*
+Compare this against k8s/raw/20-be.yaml. Three differences, and only three:
+
+  1. `namespace:` is gone. Helm supplies it from --namespace, and later ArgoCD
+     supplies it from the Application's destination. Hardcoding it here would
+     make the chart deployable to exactly one namespace.
+
+  2. Labels come from _helpers.tpl instead of being written out three times.
+
+  3. The image line is templated from values.yaml.
+
+Everything else is byte-for-byte the same. `helm template` proves it.
+
+TWO KINDS OF COMMENT, and the difference matters:
+
+  TEMPLATE comments - the form this block is written in. Helm strips them, so
+  they never reach the cluster. Notes for whoever edits the chart go here.
+
+  YAML comments - a leading hash. Helm renders them, so they DO reach the
+  cluster and show up in `helm get manifest`. Notes for whoever debugs the
+  running object go here.
+
+Both are fine. Pick deliberately rather than by habit.
+
+A TEMPLATE COMMENT CANNOT CONTAIN ITS OWN CLOSING DELIMITER, and there is no
+escape and no nesting. Writing the delimiter inside the block, even as an
+example, ends the comment there. Everything after it becomes literal template
+output, and the error you get is:
+
+  YAML parse error: cannot unmarshal string into Go value of type util.SimpleHead
+
+which says nothing about comments at all. That message means "Helm produced
+something that is not a Kubernetes object", and an accidentally-terminated
+comment is a common cause.
+
+MIND THE WHITESPACE TOO. A template-comment block placed inside a mapping
+leaves the indentation that preceded it behind, as a blank line in the output.
+Valid YAML, but the template is not producing quite what you think. Keep
+explanatory blocks at the top of the file, like this one.
+
+ON include AND nindent, used throughout below:
+
+  include    render a named template from _helpers.tpl
+  nindent N  add a newline, then indent every line by N spaces
+
+nindent is not cosmetic. The helper emits lines at zero indentation; dropped in
+without it the YAML is malformed and Helm fails to parse its own output. The
+number always matches the depth of the block it lands in.
+*/}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: be
+  labels:
+    {{- include "be.labels" . | nindent 4 }}
+spec:
+  replicas: 2
+
+  selector:
+    matchLabels:
+      {{- include "be.selectorLabels" . | nindent 6 }}
+
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+
+  template:
+    metadata:
+      labels:
+        {{- include "be.labels" . | nindent 8 }}
+    spec:
+      # Do not inject the legacy {SVCNAME}_SERVICE_HOST style env vars for
+      # every Service in the namespace. They are a pre-DNS relic, they leak the
+      # shape of the namespace into every pod, and with enough Services they
+      # can push a pod past its environment size limit.
+      enableServiceLinks: false
+
+      # Pod-level securityContext, applied to EVERY container including init
+      # containers. Better than repeating it per container, which is what
+      # k8s/raw/20-be.yaml did.
+      #
+      # runAsUser MUST be numeric. The kubelet checks "is this non-root?"
+      # before starting the container and never reads the image's /etc/passwd,
+      # so `USER hello` in the Dockerfile is a name it cannot resolve. Leaving
+      # it out gives:
+      #
+      #   CreateContainerConfigError: container has runAsNonRoot and image has
+      #   non-numeric user (hello), cannot verify user is non-root
+      #
+      # 1000 comes from be/Dockerfile: useradd --uid 1000 hello
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+
+      initContainers:
+        - name: db-migrate
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: IfNotPresent
+          command: ["alembic", "upgrade", "head"]
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: DATABASE_URL
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+
+      containers:
+        - name: be
+          # The one and only templated value in this file.
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: IfNotPresent
+
+          ports:
+            - name: http
+              containerPort: 8000
+
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: DATABASE_URL
+            - name: CORS_ORIGINS
+              value: "http://localhost:3000,http://localhost:8080"
+            - name: UVICORN_WORKERS
+              value: "1"
+
+          # Liveness: "are you alive?" Failure RESTARTS the pod, so it hits
+          # /health, which touches nothing external. It deliberately does not
+          # check the database: a 30-second blip would otherwise restart every
+          # replica at once.
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            failureThreshold: 3
+
+          # Readiness: "can you do useful work?" Failure only removes the pod
+          # from the Service. No traffic, no restart. /ready DOES check the
+          # database, which is exactly right.
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 3
+
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi

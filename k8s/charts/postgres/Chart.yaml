@@ -1,0 +1,6 @@
+apiVersion: v2
+name: postgres
+description: PostgreSQL for dummy-hello-app. Practice only - Phase 7 replaces this with AWS RDS.
+type: application
+version: 0.1.0
+appVersion: "16"

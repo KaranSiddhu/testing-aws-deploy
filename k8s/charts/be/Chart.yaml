@@ -1,0 +1,13 @@
+apiVersion: v2
+name: be
+description: dummy-hello-app FastAPI backend. Includes an init container that runs Alembic migrations on every rollout.
+type: application
+
+# version    = the version of THIS CHART (the packaging).
+# appVersion = the version of the software it deploys.
+#
+# They move independently: fixing a probe timing bumps `version` and leaves
+# `appVersion` alone. Neither controls which image is deployed - that is
+# values.yaml image.tag, and only that.
+version: 0.1.0
+appVersion: "0.1.0"

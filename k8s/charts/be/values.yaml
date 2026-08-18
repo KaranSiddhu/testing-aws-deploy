@@ -1,0 +1,17 @@
+# The image is the only thing that meaningfully changes between deploys.
+# Everything else (replicas, env, probes, resources, the migration init
+# container) is hardcoded in templates/.
+#
+# That is deliberate, and it is what the real MagOneAI charts do. Most Helm
+# tutorials parameterise everything - replicas, ports, probe timings, service
+# type - but a chart used by ONE app in ONE way does not need those knobs. A
+# knob you never turn is just a place for a bug and one more thing to read past.
+#
+# Parameterise what actually varies. Here, that is the image tag.
+#
+# Always a pinned tag, never the moving `dev`. A moving tag means a pod that
+# restarts at the wrong moment silently picks up a different build than its
+# siblings, and you can never tell what is actually running.
+image:
+  repository: docker.io/karansiddhu/dummy-hello-be
+  tag: dev-7adf167

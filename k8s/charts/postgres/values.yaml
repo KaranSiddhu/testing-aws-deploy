@@ -1,0 +1,16 @@
+# Upstream image, so repository and tag are separate here too.
+image:
+  repository: postgres
+  tag: "16-alpine"
+
+# Storage size IS parameterised, unlike anything in the app charts.
+#
+# The reason it earns a knob: a PersistentVolumeClaim's size is set at creation
+# and this is the value you would genuinely change per environment. It is also
+# the one field you cannot fix by editing the template and redeploying, because
+# volumeClaimTemplates are immutable once the StatefulSet exists.
+#
+# The test for "does this deserve to be a value?" is not "could it vary" -
+# everything could. It is "will it actually vary, and would hardcoding it hurt".
+persistence:
+  size: 1Gi

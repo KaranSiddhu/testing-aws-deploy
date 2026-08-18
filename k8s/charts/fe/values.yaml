@@ -1,0 +1,5 @@
+# Same principle as charts/be: the image tag is the only thing that changes
+# between deploys, so it is the only thing here.
+image:
+  repository: docker.io/karansiddhu/dummy-hello-fe
+  tag: dev-7adf167

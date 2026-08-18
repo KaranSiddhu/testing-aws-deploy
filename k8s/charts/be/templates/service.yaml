@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: be
+  labels:
+    {{- include "be.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    # MUST be the selector labels, not the full set. A Service matches pods on
+    # every key listed here, so including something the pods do not carry gives
+    # a Service with zero endpoints and connections that are simply refused.
+    {{- include "be.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: http
+      port: 8000
+      targetPort: http
