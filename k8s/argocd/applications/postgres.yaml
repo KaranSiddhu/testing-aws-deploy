@@ -32,12 +32,61 @@ spec:
     server: https://kubernetes.default.svc
     namespace: dummy-hello
 
+  # Without this the StatefulSet sits at OutOfSync FOREVER while reporting
+  # Healthy, and every sync "succeeds" without changing anything.
+  #
+  # The cause: the API server DEFAULTS fields into volumeClaimTemplates that the
+  # chart never wrote. Compare what we send with what is stored:
+  #
+  #     sent                          stored
+  #     metadata: {name: data}        metadata: {name: data}
+  #     spec:                         apiVersion: v1              <- defaulted
+  #       accessModes: [RWO]          kind: PersistentVolumeClaim <- defaulted
+  #       resources: ...              spec:
+  #                                     accessModes: [RWO]
+  #                                     resources: ...
+  #                                     volumeMode: Filesystem    <- defaulted
+  #                                   status: {phase: Pending}    <- defaulted
+  #
+  # ArgoCD compares desired against live, sees four fields it did not ask for,
+  # and calls it a diff. It then cannot fix the diff, because
+  # volumeClaimTemplates is IMMUTABLE on a StatefulSet - the only way to change
+  # it is to delete and recreate the object. So it reports OutOfSync on every
+  # pass, permanently.
+  #
+  # This is a known ArgoCD issue, open since 2019 (argoproj/argo-cd#1729, #4126,
+  # #11143). Any chart with a StatefulSet hits it: in the real repos that would
+  # be qdrant, redis, loki, grafana and prometheus.
+  #
+  # WHY IT MATTERS beyond being untidy: a permanently-OutOfSync Application is
+  # an alarm that is always on. After a week nobody looks at it, and the day
+  # something genuinely drifts, nobody notices.
+  #
+  # The fields are listed individually rather than ignoring
+  # /spec/volumeClaimTemplates wholesale. A real change - 1Gi to 2Gi - still
+  # shows as OutOfSync, which is the correct signal: ArgoCD cannot apply it, and
+  # you need to know that so you can recreate the StatefulSet deliberately.
+  ignoreDifferences:
+    - group: apps
+      kind: StatefulSet
+      jqPathExpressions:
+        - .spec.volumeClaimTemplates[].apiVersion
+        - .spec.volumeClaimTemplates[].kind
+        - .spec.volumeClaimTemplates[].status
+        - .spec.volumeClaimTemplates[].spec.volumeMode
+        - .spec.volumeClaimTemplates[].metadata.creationTimestamp
+
   syncPolicy:
     automated:
       prune: true
       selfHeal: true
     syncOptions:
       - ServerSideApply=true
+      # Makes sync honour ignoreDifferences too, not just the diff view.
+      # Without it ArgoCD still sends the ignored fields on every sync, which
+      # with ServerSideApply means it keeps claiming ownership of fields it has
+      # just been told to ignore.
+      - RespectIgnoreDifferences=true
     retry:
       limit: 5
       backoff:
