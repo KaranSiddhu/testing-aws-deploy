@@ -1,0 +1,59 @@
+# Local practice cluster, created with kind ("Kubernetes IN Docker").
+#
+#   kind create cluster --config kind/cluster.yaml
+#
+# Each "node" below is a Docker container on your Mac running a real Kubernetes
+# node. Same Kubernetes API as EKS, no cloud bill.
+#
+# NOTE: this file has NO equivalent in the real deployment repos. They always
+# target a cloud, so there is no local cluster to define. It lives in its own
+# folder so it never gets confused with the real structure.
+
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: dummy-hello
+
+nodes:
+  # -------------------------------------------------------------------------
+  # The control plane. Runs the API server, scheduler and etcd.
+  #
+  # On EKS you never see this: AWS runs it for you, and charges $0.10/hour for
+  # it. Here it is just another container.
+  # -------------------------------------------------------------------------
+  - role: control-plane
+
+    kubeadmConfigPatches:
+      # Labels this node "ingress-ready". The ingress-nginx controller we add
+      # later selects nodes by that label, so it lands on the node whose ports
+      # are actually mapped to your Mac.
+      - |
+        kind: InitConfiguration
+        nodeRegistration:
+          kubeletExtraArgs:
+            node-labels: "ingress-ready=true"
+
+    # Forward two ports from your Mac into this node, so a browser can reach an
+    # Ingress later without port-forward.
+    #
+    # 8080 and 8443 rather than 80 and 443 to avoid clashing with anything
+    # already listening on the privileged ports.
+    #
+    # Set up now even though Phase 2 does not use it: changing this later means
+    # deleting and recreating the whole cluster.
+    extraPortMappings:
+      - containerPort: 80
+        hostPort: 8080
+        protocol: TCP
+      - containerPort: 443
+        hostPort: 8443
+        protocol: TCP
+
+  # -------------------------------------------------------------------------
+  # Two workers, where your pods actually run.
+  #
+  # Two rather than one so you can watch the scheduler place pods across nodes,
+  # and see what happens when a node is drained. A single-node cluster hides
+  # both of those.
+  # -------------------------------------------------------------------------
+  - role: worker
+  - role: worker

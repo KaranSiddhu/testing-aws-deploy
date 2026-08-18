@@ -1,0 +1,213 @@
+# The backend API.
+#
+# The interesting part of this file is the initContainer, which runs database
+# migrations before the app starts. That is exactly what the real
+# charts/api/templates/deployment.yaml does in every Magure deployment.
+
+---
+# =============================================================================
+# Service: a stable internal address for the API.
+#
+# Not headless this time. This one gets a virtual IP and load-balances across
+# every matching pod, which is what you want for a stateless API: scale to 3
+# replicas and traffic spreads automatically with no config change.
+#
+# Type is ClusterIP (the default), meaning INTERNAL ONLY. Nothing outside the
+# cluster can reach it. That is correct here: only the frontend calls the API,
+# and the frontend is inside the cluster.
+# =============================================================================
+apiVersion: v1
+kind: Service
+metadata:
+  name: be
+  namespace: dummy-hello
+  labels:
+    app.kubernetes.io/name: be
+    app.kubernetes.io/part-of: dummy-hello
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: be
+  ports:
+    - name: http
+      port: 8000
+      targetPort: http
+
+---
+# =============================================================================
+# Deployment: keep N copies of this pod running.
+#
+# You describe the desired state ("2 replicas of this image"). A controller
+# watches continuously and corrects reality to match. Kill a pod and a new one
+# appears in seconds, because the desired state still says 2.
+#
+# That reconciliation loop is the core idea of Kubernetes, and in Phase 4
+# ArgoCD applies the same idea one level up: it watches Git and corrects the
+# cluster to match.
+# =============================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: be
+  namespace: dummy-hello
+  labels:
+    app.kubernetes.io/name: be
+    app.kubernetes.io/part-of: dummy-hello
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: be
+
+  strategy:
+    # Replace pods gradually rather than all at once, so there is no downtime
+    # during a deploy.
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1 # may temporarily run one extra pod
+      maxUnavailable: 0 # never drop below the desired count
+
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: be
+        app.kubernetes.io/part-of: dummy-hello
+    spec:
+      # -----------------------------------------------------------------------
+      # initContainers run to completion BEFORE any normal container starts.
+      # If one fails, the pod restarts and tries again, and the app never runs
+      # against a database whose schema it does not match.
+      #
+      # This is the compose `migrate` service, translated.
+      #
+      # Note it is the SAME IMAGE as the app container below, with a different
+      # command. In the real deployment, api / kb-worker / workflow-engine are
+      # all one image used three ways, for the same reason: one build, one
+      # thing to scan, and no chance of the migration running different code
+      # than the API.
+      #
+      # Safe to run on every rollout because Alembic records which migrations
+      # have already been applied.
+      # -----------------------------------------------------------------------
+      initContainers:
+        - name: migrate
+          image: docker.io/karansiddhu/dummy-hello-be:dev-7adf167
+          command: ["alembic", "upgrade", "head"]
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: DATABASE_URL
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+
+      containers:
+        - name: be
+          # Pinned to an exact commit, NOT the moving ":dev" tag.
+          #
+          # ":dev" means something different every push, so you could never
+          # tell what is actually running, and a pod restarting at the wrong
+          # moment would silently pick up a different build than its siblings.
+          #
+          # This is why the real charts pin e.g. tag: dev-5d7aae8, and why
+          # AWNIC goes further and pins @sha256: digests.
+          image: docker.io/karansiddhu/dummy-hello-be:dev-7adf167
+
+          # IfNotPresent is safe BECAUSE the tag is immutable: the content
+          # behind dev-7adf167 never changes, so a cached copy is always
+          # correct. With ":dev" you would need Always, and pay a registry
+          # round-trip on every pod start.
+          imagePullPolicy: IfNotPresent
+
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: DATABASE_URL
+            # Not a secret, so it is inline rather than in the Secret. In
+            # Phase 3 values like this move into a ConfigMap.
+            - name: CORS_ORIGINS
+              value: "http://localhost:3000,http://localhost:8080"
+            - name: UVICORN_WORKERS
+              value: "1"
+
+          ports:
+            # Naming the port lets the Service say targetPort: http instead of
+            # repeating 8000. Change the port here and the Service follows.
+            - name: http
+              containerPort: 8000
+
+          # liveness: "are you alive?" Failing this RESTARTS the pod, so it hits
+          # /health, which touches nothing external.
+          #
+          # It deliberately does NOT check the database. If it did, a 30-second
+          # database blip would restart every API pod at once and turn a small
+          # problem into an outage.
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            failureThreshold: 3
+
+          # readiness: "can you do useful work?" Failing this only removes the
+          # pod from the Service. No traffic, no restart. /ready DOES check the
+          # database, which is exactly right: a pod that cannot reach Postgres
+          # should be taken out of rotation, not killed.
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 3
+
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+
+          # Defence in depth. The image already runs as a non-root user; this
+          # makes the cluster enforce it rather than trust it.
+          securityContext:
+            runAsNonRoot: true
+
+            # runAsUser is NOT optional alongside runAsNonRoot.
+            #
+            # Kubernetes checks "is this non-root?" BEFORE starting the
+            # container, and it never reads the image's /etc/passwd. The
+            # Dockerfile says `USER hello`, which is a NAME, so the kubelet has
+            # no way to know whether "hello" is uid 0 or uid 1000. It fails
+            # closed with:
+            #
+            #   CreateContainerConfigError
+            #   container has runAsNonRoot and image has non-numeric user
+            #   (hello), cannot verify user is non-root
+            #
+            # 1000 is the uid from be/Dockerfile:
+            #   RUN useradd --create-home --uid 1000 hello
+            #
+            # The cleaner long-term fix is `USER 1000` in the Dockerfile, so
+            # any cluster can verify it without being told.
+            runAsUser: 1000
+
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]

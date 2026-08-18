@@ -1,0 +1,26 @@
+# Secrets. Never commit any of these.
+env.sh
+*.env
+kubeconfig
+*-credentials.json
+vault-keys.json
+*.pem
+*.key
+
+# Terraform. State can contain plaintext secrets (database passwords, keys) and
+# is stored remotely, never in git.
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+*.tfvars.local
+generated/
+
+# Files rendered from a .tpl by envsubst. The .tpl is committed, the rendered
+# output is not, because rendering is what injects the secrets.
+k8s/k8s-config/**/*.yaml
+!k8s/k8s-config/**/*.yaml.tpl
+
+# OS / editor
+.DS_Store
+*.swp
