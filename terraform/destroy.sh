@@ -14,14 +14,24 @@
 # apply half-completes, and you are left with orphaned resources that still
 # bill and that Terraform no longer tracks cleanly.
 #
-# 00-prereq IS DELIBERATELY LEFT ALONE. It holds the state of everything else
-# and costs a fraction of a cent per month. Destroying it would mean Terraform
-# forgetting what it built while the resources carried on existing and billing.
+# TWO LAYERS ARE DELIBERATELY LEFT ALONE:
+#
+#   00-prereq  the state bucket. Holds the state of everything else and costs a
+#              fraction of a cent per month. Destroying it would mean Terraform
+#              forgetting what it built while the resources carried on existing
+#              and billing.
+#
+#   50-edge    the ACM certificate. Free, and validating it means adding CNAME
+#              records by hand at Hostinger. Destroying it would mean redoing
+#              that DNS work and waiting for revalidation every single session.
 # -----------------------------------------------------------------------------
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
-LAYERS=(30-data 20-cluster 10-network)
+
+# Reverse of apply order. 40-access first: its IAM roles trust the cluster's
+# OIDC provider, so they must go before the cluster does.
+LAYERS=(40-access 30-data 20-cluster 10-network)
 
 if [ "${1:-}" != "--yes" ]; then
   echo ""
@@ -31,7 +41,7 @@ if [ "${1:-}" != "--yes" ]; then
   echo "  The RDS database goes with it. skip_final_snapshot is true, so"
   echo "  THERE IS NO BACKUP. Any data in it is gone."
   echo ""
-  echo "  00-prereq (the state bucket) is left alone."
+  echo "  Left alone: 00-prereq (state bucket), 50-edge (ACM certificate)."
   echo ""
   read -r -p "  Type 'destroy' to continue: " answer
   [ "$answer" = "destroy" ] || { echo "  aborted"; exit 1; }
@@ -62,8 +72,19 @@ cat <<'EOF'
       aws ec2 describe-instances --region us-east-1 \
         --filters "Name=instance-state-name,Values=running" \
         --query 'Reservations[].Instances[].InstanceId'
+      aws elbv2 describe-load-balancers --region us-east-1 \
+        --query 'LoadBalancers[].LoadBalancerName'
 
-  All three should be empty. If an EKS cluster survives a failed destroy it
-  keeps billing $2.40/day in silence.
+  All four should be empty. If an EKS cluster survives a failed destroy it keeps
+  billing $2.40/day in silence.
+
+  THE LOAD BALANCER IS THE ONE TO WATCH. It is created by the AWS Load Balancer
+  Controller in response to an Ingress, NOT by Terraform - so Terraform does not
+  know it exists and will not remove it. Deleting the Ingress (or the whole
+  cluster) normally cleans it up, but if the controller dies first the ALB is
+  orphaned and bills $0.55/day forever.
+
+  If one is left behind:
+      aws elbv2 delete-load-balancer --region us-east-1 --load-balancer-arn <arn>
 
 EOF

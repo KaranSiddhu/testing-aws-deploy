@@ -22,6 +22,27 @@
 # It has a second benefit that matters more day to day: adding a service is
 # adding one file to k8s/argocd/applications/, and removing one is deleting
 # that file. No cluster access required for either.
+#
+# A TEMPLATE, because the path it watches depends on where you are deploying.
+# apply.sh renders it from env.sh.
+#
+#   PLATFORM=kind  ->  k8s/argocd/envs/kind   in-cluster Postgres, Docker Hub
+#                                             images, ingress-nginx
+#   PLATFORM=eks   ->  k8s/argocd/envs/eks    RDS, ECR images, AWS Load
+#                                             Balancer Controller
+#
+# THIS IS A DELIBERATE DEVIATION from the Magure repos. They never do it:
+# trinity, neo and awnic are three separate repositories, one per environment,
+# and each has exactly one applications/ directory.
+#
+# That is the better pattern when environments are long-lived and owned by
+# different people. Ours are not - kind is a free rehearsal for EKS, on the same
+# app, by the same person - and running EKS around the clock to avoid one
+# directory split would cost about $120 a month.
+#
+# The two directories are NOT copies. envs/eks/be.yaml overrides the image to
+# ECR; envs/kind has a postgres Application that EKS does not, because EKS uses
+# RDS. The differences are the point.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -37,7 +58,7 @@ spec:
   source:
     repoURL: https://github.com/KaranSiddhu/testing-aws-magure-deploy.git
     targetRevision: main
-    path: k8s/argocd/applications
+    path: k8s/argocd/envs/${PLATFORM}
     directory:
       # Flat. There are no subdirectories today, and if one is ever added it
       # should be a deliberate decision rather than silently swept in.

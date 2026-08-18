@@ -1,0 +1,33 @@
+# Image manifest.
+#
+# Every image this deployment runs on EKS: where it comes from, which ECR
+# repository it is mirrored into, and which tag.
+#
+# This file is the input to mirror-to-ecr.sh.
+#
+# WHY MIRROR AT ALL, when the images are already public on Docker Hub:
+#
+#   1. RATE LIMITS. Docker Hub allows 100 anonymous pulls per 6 hours. A
+#      cluster restarting, or a node replaced during an upgrade, can burn
+#      through that in minutes - and then every pod fails with
+#      `toomanyrequests`, which reads like a broken image rather than a quota.
+#
+#   2. LATENCY AND COST. ECR pulls stay inside AWS. Faster, and no egress
+#      charge.
+#
+#   3. CONTROL. The image cannot disappear or change underneath you. ECR
+#      repositories here are created with IMMUTABLE tags, so a tag can never be
+#      repointed at different content.
+#
+# For AWNIC there is no choice at all: its VPC has no route to Docker Hub, so
+# mirroring is the only way images get in.
+#
+# THE IMAGES ARE COPIED, NOT REBUILT. mirror-to-ecr.sh moves the exact bytes,
+# preserving the multi-architecture manifest. The image running on EKS is
+# byte-identical to the one running on kind. Rebuilding for AWS would throw away
+# the entire "build once, deploy everywhere" property.
+#
+# Format:  <source image>  <ecr repository>  <tag>
+
+docker.io/karansiddhu/dummy-hello-be    dummy-hello-be    dev-7adf167
+docker.io/karansiddhu/dummy-hello-fe    dummy-hello-fe    dev-7adf167

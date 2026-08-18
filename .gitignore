@@ -26,3 +26,7 @@ generated/
 # OS / editor
 .DS_Store
 *.swp
+
+# The root Application is rendered from a .tpl, because the environment
+# directory it watches depends on PLATFORM in k8s-config/env.sh.
+k8s/argocd/bootstrap/01-app-of-apps.yaml

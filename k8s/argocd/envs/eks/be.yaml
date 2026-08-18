@@ -1,0 +1,60 @@
+# The backend on EKS.
+#
+# THE SAME CHART as envs/kind/be.yaml. Only two values differ, and both are
+# supplied here rather than by changing the chart:
+#
+#   image.repository   ECR instead of Docker Hub
+#   image.tag          identical - the SAME BUILD, mirrored, not rebuilt
+#
+# That second point is worth pausing on. Phase 7 does not rebuild anything.
+# images/mirror-to-ecr.sh copies the exact bytes from Docker Hub into ECR, so
+# the image running on EKS is byte-identical to the one running on kind. If it
+# were rebuilt, "it worked locally" would prove nothing again.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: be
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+  annotations:
+    # Wave 2. No postgres Application here - the database is RDS, created by
+    # Terraform - but the wave is kept the same as kind so the two environments
+    # read alike.
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  project: dummy-hello
+
+  source:
+    repoURL: https://github.com/KaranSiddhu/testing-aws-magure-deploy.git
+    targetRevision: main
+    path: k8s/charts/be
+
+    helm:
+      # Per-environment override, which is what a `helm:` block in an
+      # Application is for. The chart's own values.yaml stays authoritative for
+      # everything else, so a probe or resource change made once applies to
+      # both environments.
+      #
+      # AWNIC does the same for its per-environment appUrl.
+      values: |
+        image:
+          repository: 660169747695.dkr.ecr.us-east-1.amazonaws.com/dummy-hello-be
+          tag: dev-7adf167
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: dummy-hello
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 15s
+        factor: 2
+        maxDuration: 5m

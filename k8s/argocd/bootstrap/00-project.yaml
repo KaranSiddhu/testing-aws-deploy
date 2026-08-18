@@ -39,6 +39,13 @@ spec:
     # where the workloads actually go
     - server: https://kubernetes.default.svc
       namespace: dummy-hello
+    # kube-system, for the AWS Load Balancer Controller on EKS. Without this
+    # entry that Application sits at OutOfSync/Missing on "namespace kube-system
+    # is not permitted in project" - which reads like a broken chart rather than
+    # a missing permission. AWNIC's project lists kube-system for the same
+    # controller.
+    - server: https://kubernetes.default.svc
+      namespace: kube-system
 
   # Cluster-scoped resources this project may create.
   #
@@ -53,6 +60,29 @@ spec:
   clusterResourceWhitelist:
     - group: ""
       kind: Namespace
+
+    # The rest exist only for the AWS Load Balancer Controller on EKS. It ships
+    # a ClusterRole, CRDs (IngressClassParams, TargetGroupBinding), an
+    # IngressClass, and registers admission webhooks. Miss any one and the
+    # Application sits at OutOfSync/Missing on "resource is not permitted in
+    # project".
+    #
+    # Still an allowlist of specific kinds rather than "*". A project that can
+    # create arbitrary cluster-scoped objects is not a boundary at all.
+    - group: rbac.authorization.k8s.io
+      kind: ClusterRole
+    - group: rbac.authorization.k8s.io
+      kind: ClusterRoleBinding
+    - group: apiextensions.k8s.io
+      kind: CustomResourceDefinition
+    - group: admissionregistration.k8s.io
+      kind: ValidatingWebhookConfiguration
+    - group: admissionregistration.k8s.io
+      kind: MutatingWebhookConfiguration
+    - group: networking.k8s.io
+      kind: IngressClass
+    - group: elbv2.k8s.aws
+      kind: IngressClassParams
 
   namespaceResourceWhitelist:
     - group: "*"

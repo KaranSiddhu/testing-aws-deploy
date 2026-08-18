@@ -5,9 +5,11 @@ env.sh
 # after envsubst, so the .tpl is committed and the result never is.
 #
 # Listed one by one rather than as a glob, deliberately: adding a template is
-# then a two-line change and you cannot forget the second one silently. Copied
-# from trinity-magure-deploy/k8s/k8s-config/.gitignore.
+# then a two-line change and you cannot forget the second one silently. A glob
+# was tried and was wrong - `**/*.yaml` also matches kustomization.yaml, which
+# MUST be committed. Copied from trinity-magure-deploy.
 00-foundation/namespace.yaml
 00-foundation/secrets.yaml
-07-routes/ingress.yaml
+07-routes/ingress-nginx.yaml
+07-routes/ingress-alb.yaml
 10-argocd/argocd-server-ingress.yaml

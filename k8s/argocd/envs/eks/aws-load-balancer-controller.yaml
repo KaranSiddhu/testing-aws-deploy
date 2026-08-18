@@ -1,0 +1,120 @@
+# The AWS Load Balancer Controller.
+#
+# WHAT IT DOES: watches Ingress objects and creates real AWS Application Load
+# Balancers to match. It is the EKS equivalent of ingress-nginx, except the
+# proxy is an AWS-managed service rather than a pod.
+#
+# WHY IT REPLACES ingress-nginx HERE: ingress-nginx was retired by the
+# Kubernetes project on 2026-03-23 and gets no security patches. That is
+# survivable on a local kind cluster with no internet exposure; it is not
+# survivable on something reachable from the internet. magoneai-awnic-deploy
+# made exactly this switch, and its README gives exactly this reason.
+#
+# NOT VENDORED. This Application pulls the chart straight from AWS's Helm
+# repository. AWNIC vendors it into k8s/charts/ because its ArgoCD repo-server
+# has no route to any chart host - the VPC is air-gapped. Ours has internet, so
+# pointing at the source is simpler and there is nothing to keep in sync.
+#
+# trinity does the same for temporal-server, the one upstream chart it does not
+# vendor.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: aws-load-balancer-controller
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+  annotations:
+    # Wave 0: BEFORE everything else.
+    #
+    # It must be running before any Ingress is created, or the Ingress sits
+    # there with no ADDRESS and nothing explains why. It also registers an
+    # admission webhook, and an Ingress created before that webhook is ready is
+    # rejected outright.
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  project: dummy-hello
+
+  source:
+    # A Helm REPOSITORY, not a git repo. ArgoCD supports both; when repoURL is
+    # a chart repo you give `chart` instead of `path`.
+    repoURL: https://aws.github.io/eks-charts
+    chart: aws-load-balancer-controller
+
+    # Chart version, which is not always the same as the app version it
+    # installs. Here 3.5.0 installs controller v3.5.0 - the same version AWNIC
+    # pins, and the version whose IAM policy is vendored at
+    # terraform/modules/aws/alb-controller-iam/iam_policy.json.
+    #
+    # THOSE TWO MUST MOVE TOGETHER. A controller newer than its policy fails on
+    # one missing IAM action, deep inside a reconcile, and surfaces only as an
+    # Ingress that never gets an address.
+    targetRevision: 3.5.0
+
+    helm:
+      values: |
+        # Which cluster to manage. Required: the controller tags every load
+        # balancer it creates with this, and refuses to touch resources tagged
+        # for a different cluster.
+        clusterName: dummy-hello
+
+        region: us-east-1
+
+        serviceAccount:
+          create: true
+          # MUST match terraform/aws/40-access exactly. The IRSA trust policy
+          # pins system:serviceaccount:kube-system:aws-load-balancer-controller.
+          # Change either side and the pod starts cleanly, then fails every AWS
+          # call with AccessDenied several minutes later.
+          name: aws-load-balancer-controller
+          annotations:
+            # This annotation is the whole of IRSA on the Kubernetes side. It
+            # tells the pod which IAM role to assume. No key, no Secret,
+            # nothing to rotate.
+            #
+            # The ARN is stable across destroy/apply cycles because the role
+            # name is fixed in the Terraform module, so it is safe to commit.
+            # It is not a secret either way - an ARN grants nothing without the
+            # OIDC trust relationship behind it.
+            eks.amazonaws.com/role-arn: arn:aws:iam::660169747695:role/dummy-hello-alb-controller
+
+        # Shield, WAF and WAFv2 default to NULL in this chart, not false, and
+        # the chart only emits the corresponding flags when the value is a real
+        # boolean. Leaving them unset emits no flag, and the CONTROLLER then
+        # defaults them ON - after which every Ingress reconcile blocks on
+        # Shield and WAF API calls.
+        #
+        # AWNIC hit exactly this. Setting them explicitly false is the fix.
+        enableShield: false
+        enableWaf: false
+        enableWafv2: false
+
+        replicaCount: 1
+
+        resources:
+          requests:
+            cpu: 50m
+            memory: 96Mi
+          limits:
+            cpu: 200m
+            memory: 256Mi
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kube-system
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true
+      # The chart ships CRDs. Without this they are skipped and the controller
+      # crash-loops looking for types that do not exist.
+      - CreateNamespace=false
+    retry:
+      limit: 5
+      backoff:
+        duration: 15s
+        factor: 2
+        maxDuration: 5m

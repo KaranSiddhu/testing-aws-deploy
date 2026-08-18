@@ -1,0 +1,50 @@
+# The frontend on EKS. Same chart as envs/kind/fe.yaml, ECR image.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: fe
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+spec:
+  project: dummy-hello
+
+  source:
+    repoURL: https://github.com/KaranSiddhu/testing-aws-magure-deploy.git
+    targetRevision: main
+    path: k8s/charts/fe
+
+    helm:
+      values: |
+        image:
+          repository: 660169747695.dkr.ecr.us-east-1.amazonaws.com/dummy-hello-fe
+          tag: dev-7adf167
+
+  # NOTE: API_INTERNAL_URL is NOT overridden here.
+  #
+  # It stays http://be:8000, exactly as on kind, because it names a Service
+  # inside the cluster - and that Service is called "be" in both environments.
+  # The frontend has no idea it moved to AWS.
+  #
+  # This is the payoff for the proxy route added back in Phase 1: the image
+  # contains no environment-specific address, so moving cloud changes nothing
+  # about it.
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: dummy-hello
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 15s
+        factor: 2
+        maxDuration: 5m
