@@ -1,7 +1,0 @@
-# MagOneAI consumer-facing Next.js frontend (the "hub" UI). Spec-driven image +
-# replicas.
-# Everything else (resources, probes, env, securityContext) is fixed in templates/.
-image:
-  repository: docker.io/magureai/magoneai-consumer
-  tag: ""        # REQUIRED — image tag to deploy
-replicaCount: 1 

@@ -1,4 +1,0 @@
-apiVersion: v2
-name: dns-routing
-description: Let's Encrypt ClusterIssuer (HTTP-01) + product TLS Ingress (host from values).
-version: 0.1.0

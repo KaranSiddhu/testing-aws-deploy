@@ -1,6 +1,0 @@
-apiVersion: v2
-name: redis
-description: MagOneAI Redis cache (StatefulSet with password auth, LRU eviction).
-type: application
-version: 0.1.0
-appVersion: "7"

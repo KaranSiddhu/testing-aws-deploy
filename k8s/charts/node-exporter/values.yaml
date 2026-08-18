@@ -1,5 +1,0 @@
-# DaemonSet — one pod per node, host-network on :9100. Scraped by Prometheus via
-# endpoint service discovery (see the node-exporter Service + scrape annotation).
-image:
-  repository: quay.io/prometheus/node-exporter
-  tag: "v1.8.2"

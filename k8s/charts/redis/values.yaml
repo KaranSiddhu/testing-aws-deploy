@@ -1,5 +1,0 @@
-# Image is the only thing that meaningfully changes between deploys.
-# Everything else is hardcoded in templates/.
-image:
-  repository: docker.io/redis
-  tag: 7-alpine

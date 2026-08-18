@@ -1,6 +1,0 @@
-apiVersion: v2
-name: kube-state-metrics
-description: kube-state-metrics — Kubernetes object state metrics (pod resource requests/limits, OOMKills, restarts, replica health).
-type: application
-version: 0.1.0
-appVersion: "2.13.0"

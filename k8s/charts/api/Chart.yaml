@@ -1,6 +1,0 @@
-apiVersion: v2
-name: api
-description: MagOneAI FastAPI backend (main API server). Includes init container that runs DB migrations on every rollout.
-type: application
-version: 0.1.0
-appVersion: "1.0"

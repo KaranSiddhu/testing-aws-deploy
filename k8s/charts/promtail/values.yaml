@@ -1,5 +1,0 @@
-# Image is the only thing that meaningfully changes between deploys.
-# Everything else is hardcoded in templates/. and promtail-rbac.yaml.
-image:
-  repository: docker.io/grafana/promtail
-  tag: "2.9.4"

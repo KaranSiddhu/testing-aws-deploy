@@ -1,6 +1,0 @@
-apiVersion: v2
-name: superadmin
-description: MagOneAI superadmin portal (Next.js, served under /superadmin) — org/tenant management.
-type: application
-version: 0.1.0
-appVersion: "1.0"
