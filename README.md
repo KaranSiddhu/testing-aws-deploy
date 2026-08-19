@@ -1,4 +1,4 @@
-# testing-aws-magure-deploy
+# testing-aws-deploy
 
 Practice deployment repo. It deploys **dummy-hello-app**
 (`github.com/KaranSiddhu/argocd-aws`) and exists to learn the same stack the
