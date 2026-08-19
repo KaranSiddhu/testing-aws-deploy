@@ -161,6 +161,55 @@ you.**
   speaks HTTP to a backend expecting TLS, giving a redirect loop or a 502 with
   nothing about TLS in any log. `10-argocd/kustomization.yaml` patches it.
 
+- **An AppProject rejects any source repo not in `sourceRepos`.** The
+  Application sits at `Unknown/Unknown` - not Degraded, not OutOfSync - with
+  `application repo <url> is not permitted in project` only in
+  `.status.conditions`. ArgoCD never even tried. Adding the AWS Helm repo for
+  the load balancer controller needed a second entry. Treat each entry as a
+  decision: it widens what a mistyped or compromised Application could deploy.
+
+- **`kubectl wait` does not wait for a resource to be created.**
+  `--for=condition=available` fails INSTANTLY with `NotFound` if the object does
+  not exist yet. Bootstrapping applies the root Application and then waits for a
+  Deployment ArgoCD has not created, so it needs two waits: `--for=create`
+  first, then `--for=condition=available`. General trap with anything
+  asynchronous, which is all of GitOps.
+
+- **Pods cannot reach EC2 instance metadata, by design.** EKS managed node
+  groups set the IMDS hop limit to 1, and a pod is one hop further than the
+  node. The AWS Load Balancer Controller therefore cannot auto-discover its VPC
+  and crash-loops with `failed to get VPC ID: ... ec2imds: GetMetadata, context
+  deadline exceeded`. Do NOT raise the hop limit to 2 - that lets any pod read
+  the node's IAM credentials, which is the exact attack IRSA exists to prevent.
+  Set `vpcId` explicitly instead. Tell the component the answer; do not weaken
+  the boundary so it can sniff for it.
+
+- **asyncpg needs `?ssl=require`, NOT `?sslmode=require`.** `sslmode` is libpq's
+  parameter, used by psql and psycopg2, and shown in every AWS document and
+  tutorial. asyncpg does not understand it and SQLAlchemy does not translate it.
+  RDS enforces TLS, so some parameter is mandatory. Wrong one gives
+  `TypeError: connect() got an unexpected keyword argument 'sslmode'`, which
+  mentions neither TLS nor RDS. Documented verbatim in
+  `magoneai-awnic-deploy/CLAUDE.md` and still written wrong here first time.
+
+- **A log line saying it did the right thing is not evidence that it did.**
+  `apply.sh` printed `DATABASE_URL: from DATABASE_URL_OVERRIDE` while
+  `secrets.yaml.tpl` still hardcoded `@postgres:5432` and ignored the variable.
+  The script was right; the template was not. On EKS the pod failed with
+  `socket.gaierror: Name or service not known`, which reads as broken cluster
+  DNS. Check the ARTEFACT, not the narration:
+  `kubectl get secret db-credentials -o jsonpath='{.data.DATABASE_URL}' | base64 -d`
+
+- **A pod reads a Secret at START.** Updating a Secret changes nothing for
+  running pods; they keep the old value until replaced. After re-rendering,
+  `kubectl rollout restart deployment/<name>`.
+
+- **The ALB is created by the controller, not by Terraform.** Terraform does not
+  know it exists and will not remove it. Destroy the cluster with an Ingress
+  still present and the load balancer can be orphaned, billing $0.55/day with
+  nothing tracking it. Always `kubectl delete ingress -n <ns> --all` BEFORE
+  `terraform destroy`, and check `aws elbv2 describe-load-balancers` afterwards.
+
 - **Port 5432 is taken locally.** A Homebrew PostgreSQL owns it on this Mac, so
   `docker/compose.dev.yaml` maps `5433:5432`. Only the host-side number changed;
   container-to-container traffic never touched it.
